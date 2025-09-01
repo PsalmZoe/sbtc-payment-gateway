@@ -1,0 +1,65 @@
+{
+  "mnemonic": "lonely size dune sick pottery train weapon awake elephant sudden virus alcohol dice catch toss confirm wife exit credit meadow sell moral uncle resemble",
+  "keyInfo": {
+    "privateKey": "16c62bf81ca6f378e1d09153e09e8904d48d4a9367af73642be1bd9d27c4424201",
+    "publicKey": "026f3e3659723d89bf7061579d6ca2678b3992593f15bd6d6750c1ab0d5312d92f",
+    "address": "SPCHZ4BJWN1EACT9F1FCA1PRMXV8ZARWVGK1V1X3",
+    "btcAddress": "13HqiC1vYBHjSevA6frx3tsJdCjwjYG5HU",
+    "wif": "Kwyyqa3yfmZr4aHaoAWpoRXZREgnE579FYcH2hMcLoqEPkeyx1Rd",
+    "index": 0
+  }
+}
+
+oval scatter behind blade gun welcome require panel increase sock item fuel draw cup vessel supreme patch setup thing hamster allow carbon display meadow
+
+
+{
+  "mnemonic": "busy embark before tree priority tube modify civil off busy submit horse neither clay logic eternal exhaust debate nice menu draw slab airport cup",
+  "keyInfo": {
+    "privateKey": "daefdbb1be8bccbb5f9217901dc4d8bef25d1e98d24e3367a2147472b54ee98a01",
+    "publicKey": "02dc12f526d2a6a0ee3516a60d15ddde4914ebcf365e08d6d0a7e22dcd2db3ab51",
+    "address": "SP1H5A3TVZQZDTE8PQVBGY313JQMD509Z39WM8K28",
+    "btcAddress": "19xw7sZ7JBYM2q1Q8femmTtRatjsPwjgAU",
+    "wif": "L4ZJ6yHFAbVNv2oXGy1hJTNLpAvze9cAi1jWD3fWhd5eaasmq3Fh",
+    "index": 0
+  }
+}
+
+seventhstagemedia@Psalms-MacBook-Pro sbtc-payment-gateway % stx convert_address SP1H5A3TVZQZDTE8PQVBGY313JQMD509Z39WM8K28 -t
+{
+  "mainnet": {
+    "STACKS": "SP1H5A3TVZQZDTE8PQVBGY313JQMD509Z39WM8K28",
+    "BTC": "19xw7sZ7JBYM2q1Q8femmTtRatjsPwjgAU"
+  },
+  "testnet": {
+    "STACKS": "ST1H5A3TVZQZDTE8PQVBGY313JQMD509Z3BW4Y6E3",
+    "BTC": "mpUtQve67CybowV1rEd9bP6kStLaMf8din"
+  }
+}
+
+
+
+seventhstagemedia@Psalms-MacBook-Pro sbtc-payment-gateway % STX_NETWORK=testnet stx make_keychain --derivation_path "m/44'/5757'/0'/0/0"
+{
+  "mnemonic": "fury one behave lift maximum omit spike year since unknown blossom sauce size envelope finish wide sheriff elite captain plate pluck slim joke history",
+  "keyInfo": {
+    "privateKey": "a7d4c3c468adfee4088fc7e9eaabb76dd9701d062eb3e0c8214f86d9bdbada9f01",
+    "publicKey": "02216f10a12bf7987472d5039f6eda27b20b03da7ca5066199076889a390cab8bc",
+    "address": "SP3Z0K0D3VXZ1GZVAZECBWXRVTDYHFFAG4CFCVNXP",
+    "btcAddress": "1QAE2F1uKir5aQfSQLXH5gq1XZf31opKN2",
+    "wif": "L2qxCuce6JFXBVP4S92vz6WP7WxRJik7kc6mqMuMxde7eWy3Brpq",
+    "index": 0
+  }
+}
+seventhstagemedia@Psalms-MacBook-Pro sbtc-payment-gateway % stx convert_address SP3Z0K0D3VXZ1GZVAZECBWXRVTDYHFFAG4CFCVNXP -t
+
+{
+  "mainnet": {
+    "STACKS": "SP3Z0K0D3VXZ1GZVAZECBWXRVTDYHFFAG4CFCVNXP",
+    "BTC": "1QAE2F1uKir5aQfSQLXH5gq1XZf31opKN2"
+  },
+  "testnet": {
+    "STACKS": "ST3Z0K0D3VXZ1GZVAZECBWXRVTDYHFFAG4FZMXCSD",
+    "BTC": "n4gBKJ6t8kHLMX947uVeuc3LPZFjuihoyQ"
+  }
+}

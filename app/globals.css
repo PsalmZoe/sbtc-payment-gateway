@@ -2,26 +2,69 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    /* Simplified color theme with clean blues and grays */
+    --background: 0 0% 100%;
+    --foreground: 210 40% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 40% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 40% 8%;
+    --primary: 221 83% 53%; /* Simple blue primary */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 210 40% 8%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 210 40% 8%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --chart-1: 221 83% 53%;
+    --chart-2: 210 40% 8%;
+    --chart-3: 47 96% 53%;
+    --chart-4: 120 93% 47%;
+    --chart-5: 0 84% 60%;
+    --radius: 0.5rem;
+  }
+  /* Removed all .dark CSS classes and dark mode variables */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* Updated to use Montserrat font family and added smooth transitions */
+    font-family: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+    /* Removed dark mode transition */
+  }
+
+  /* Updated font utilities to use Montserrat as primary font */
+  .font-montserrat {
+    font-family: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  .font-sans {
+    font-family: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  .font-jetbrains-mono {
+    font-family: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Monaco, Consolas, monospace;
+  }
+
+  .font-mono {
+    font-family: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Monaco, Consolas, monospace;
   }
 }
