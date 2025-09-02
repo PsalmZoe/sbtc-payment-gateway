@@ -1,3 +1,8 @@
+// lib/stacks.ts
+import {
+  STACKS_TESTNET,
+  STACKS_MAINNET,
+} from "@stacks/network"
 import {
   makeContractCall,
   broadcastTransaction,
@@ -7,17 +12,23 @@ import {
   uintCV,
   standardPrincipalCV,
 } from "@stacks/transactions"
-import { StacksTestnet } from "@stacks/network"
+import crypto from "crypto"
 
-const network = new StacksTestnet()
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
+// Networks
+export const testnetNetwork = STACKS_TESTNET
+export const mainnetNetwork = STACKS_MAINNET
+
+// Smart contract info
+const CONTRACT_ADDRESS =
+  process.env.CONTRACT_ADDRESS || "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
 const CONTRACT_NAME = "payment-gateway"
 
+// Register payment intent on-chain
 export async function registerPaymentIntent(
   privateKey: string,
   intentId: Buffer,
   merchantPrincipal: string,
-  amount: bigint,
+  amount: bigint
 ) {
   const txOptions = {
     contractAddress: CONTRACT_ADDRESS,
@@ -26,26 +37,28 @@ export async function registerPaymentIntent(
     functionArgs: [
       bufferCVFromString(intentId.toString("hex")),
       standardPrincipalCV(merchantPrincipal),
-      uintCV(amount.toString()),
+      uintCV(Number(amount)), // convert bigint to number
     ],
     senderKey: privateKey,
-    network,
+    network: testnetNetwork, // included here
     anchorMode: AnchorMode.Any,
     postConditionMode: PostConditionMode.Allow,
   }
 
   const transaction = await makeContractCall(txOptions)
-  const broadcastResponse = await broadcastTransaction(transaction, network)
+
+  // ✅ broadcastTransaction now takes an object
+  const broadcastResponse = await broadcastTransaction({ transaction })
 
   return broadcastResponse
 }
 
+// Utility to generate contract ID
 export function generateContractId(): Buffer {
-  // Generate a random 32-byte buffer for contract ID
-  return Buffer.from(crypto.getRandomValues(new Uint8Array(32)))
+  return crypto.randomBytes(32)
 }
 
+// Utility to format Stacks address
 export function formatStacksAddress(address: string): string {
-  // Ensure proper Stacks address format
   return address.startsWith("ST") || address.startsWith("SP") ? address : `ST${address}`
 }

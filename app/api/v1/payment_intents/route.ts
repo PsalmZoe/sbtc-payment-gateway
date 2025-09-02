@@ -6,34 +6,27 @@ import type { CreatePaymentIntentRequest, CreatePaymentIntentResponse } from "@/
 
 export async function POST(request: NextRequest) {
   try {
-    // Extract API key from Authorization header
     const authHeader = request.headers.get("authorization")
     if (!authHeader?.startsWith("Bearer ")) {
       return NextResponse.json({ error: "Missing or invalid API key" }, { status: 401 })
     }
 
     const apiKey = authHeader.substring(7)
-
-    // Find merchant by API key
     const merchant = await findMerchantByApiKey(apiKey)
     if (!merchant) {
       return NextResponse.json({ error: "Invalid API key" }, { status: 401 })
     }
 
-    // Parse request body
     const body: CreatePaymentIntentRequest = await request.json()
-    const amount = typeof body.amount === "string" ? Number.parseInt(body.amount) : body.amount
-
+    const amount = typeof body.amount === "string" ? parseInt(body.amount) : body.amount
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 })
     }
 
-    // Generate IDs and secrets
     const contractId = generateContractId()
     const clientSecret = generateClientSecret()
     const clientSecretHash = await hashApiKey(clientSecret)
 
-    // Create payment intent in database
     const paymentIntent = await createPaymentIntent({
       contractId,
       merchantId: merchant.id,
@@ -42,17 +35,16 @@ export async function POST(request: NextRequest) {
       metadata: body.metadata,
     })
 
-    // Register intent on smart contract (in background)
+    // Register intent on-chain in background
     if (process.env.STACKS_PRIVATE_KEY) {
       registerPaymentIntent(
         process.env.STACKS_PRIVATE_KEY,
         contractId,
-        merchant.stacks_address || merchant.email, // fallback for demo
-        BigInt(amount),
-      ).catch(console.error) // Don't block response on contract call
+        merchant.stacks_address || merchant.email,
+        BigInt(amount)
+      ).catch(console.error)
     }
 
-    // Build response
     const response: CreatePaymentIntentResponse = {
       id: paymentIntent.id,
       amount: amount.toString(),
@@ -71,15 +63,15 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const intentId = searchParams.get("id")
-
   if (!intentId) {
     return NextResponse.json({ error: "Missing payment intent ID" }, { status: 400 })
   }
 
   try {
-    const result = await db.query("SELECT id, amount_sats, status, created_at FROM payment_intents WHERE id = $1", [
-      intentId,
-    ])
+    const result = await db.query(
+      "SELECT id, amount_sats, status, created_at FROM payment_intents WHERE id = $1",
+      [intentId]
+    )
 
     if (result.rows.length === 0) {
       return NextResponse.json({ error: "Payment intent not found" }, { status: 404 })
