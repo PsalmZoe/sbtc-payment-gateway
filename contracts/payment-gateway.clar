@@ -82,72 +82,35 @@
     })
     (ok true)))
 
-;; Restructured pay-intent to use explicit variable binding that LSP recognizes as safe
-(define-private (validate-and-get-amount (intent-data {merchant: principal, amount: uint, paid: bool, created-at: uint}))
-  (let ((amount (get amount intent-data)))
-    (begin
-      (asserts! (is-valid-amount amount) (err ERR-INVALID-AMOUNT))
-      (ok amount))))
-
-(define-private (validate-and-get-merchant (intent-data {merchant: principal, amount: uint, paid: bool, created-at: uint}))
-  (let ((merchant (get merchant intent-data)))
-    (begin
-      (asserts! (not (is-eq merchant 'SP000000000000000000002Q6VF78)) (err ERR-INVALID-PRINCIPAL))
-      (ok merchant))))
-
-(define-private (validate-sender (sender principal))
-  (begin
-    (asserts! (not (is-eq sender 'SP000000000000000000002Q6VF78)) (err ERR-INVALID-PRINCIPAL))
-    (ok sender)))
-
-;; Completely restructured pay-intent to eliminate all unchecked data warnings
+;; Updated pay-intent to use trait-based approach for better testnet compatibility
 (define-public (pay-intent (id (buff 32)) (sbtc-contract <sip-010-trait>))
   (let
     (
       (intent-data (unwrap! (map-get? payment-intents {id: id}) (err ERR-NO-INTENT)))
+      (merchant (get merchant intent-data))
+      (amount (get amount intent-data))
+      (paid (get paid intent-data))
     )
     (begin
-      ;; Validate all parameters before extraction
+      ;; Added input validation for id parameter
       (asserts! (is-valid-id id) (err ERR-INVALID-ID))
-      (asserts! (is-eq (get paid intent-data) false) (err ERR-ALREADY-PAID))
-      
-      ;; Extract and validate parameters using explicit unwrap pattern
-      (let
-        (
-          (payment-amount (unwrap! (if (is-valid-amount (get amount intent-data)) 
-                                     (some (get amount intent-data)) 
-                                     none) (err ERR-INVALID-AMOUNT)))
-          (payment-merchant (unwrap! (if (not (is-eq (get merchant intent-data) 'SP000000000000000000002Q6VF78)) 
-                                        (some (get merchant intent-data)) 
-                                        none) (err ERR-INVALID-PRINCIPAL)))
-          (payment-sender (unwrap! (if (not (is-eq tx-sender 'SP000000000000000000002Q6VF78)) 
-                                     (some tx-sender) 
-                                     none) (err ERR-INVALID-PRINCIPAL)))
-        )
-        (begin
-          ;; Additional validation
-          (asserts! (not (is-eq payment-merchant payment-sender)) (err ERR-INVALID-PRINCIPAL))
-          
-          ;; Execute transfer with validated parameters
-          (match (as-contract (contract-call? sbtc-contract transfer 
-            payment-amount
-            payment-sender 
-            payment-merchant 
-            none))
-            success
-              (begin
-                (map-set payment-intents 
-                  {id: id} 
-                  (merge intent-data {paid: true}))
-                (print {
-                  event: "payment_intent_succeeded",
-                  id: id,
-                  amount: payment-amount,
-                  merchant: payment-merchant,
-                  customer: payment-sender
-                })
-                (ok true))
-            error (err u500)))))))
+      (asserts! (is-eq paid false) (err ERR-ALREADY-PAID))
+      ;; Transfer sBTC from customer to merchant using trait
+      (match (contract-call? sbtc-contract transfer amount tx-sender merchant none)
+        success
+          (begin
+            (map-set payment-intents 
+              {id: id} 
+              (merge intent-data {paid: true}))
+            (print {
+              event: "payment_intent_succeeded",
+              id: id,
+              amount: amount,
+              merchant: merchant,
+              customer: tx-sender
+            })
+            (ok true))
+        error (err u500)))))
 
 ;; Read-only functions
 (define-read-only (get-intent (id (buff 32)))

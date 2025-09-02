@@ -5,4 +5,4 @@ deployment_fee_rate = 10
 
 [accounts.deployer]
 mnemonic = "fury one behave lift maximum omit spike year since unknown blossom sauce size envelope finish wide sheriff elite captain plate pluck slim joke history"
-balance = 1_000_000_000_000
+balance = 1000000000000

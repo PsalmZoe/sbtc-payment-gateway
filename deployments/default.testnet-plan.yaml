@@ -10,7 +10,7 @@ plan:
       transactions:
         - contract-publish:
             contract-name: payment_gateway
-            expected-sender: STCHZ4BJWN1EACT9F1FCA1PRMXV8ZARWVKMNJ5NP
+            expected-sender: ST3Z0K0D3VXZ1GZVAZECBWXRVTDYHFFAG4FZMXCSD
             cost: 61920
             path: contracts/payment-gateway.clar
             anchor-block-only: true
