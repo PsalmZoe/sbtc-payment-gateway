@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -166,7 +168,7 @@ export default function AuthenticationPage() {
                 </div>
                 <Button
                   variant="outline"
-                  onClick={() =>
+                  onClick={(event: React.MouseEvent<HTMLButtonElement>) =>
                     copyToClipboard(`curl -X POST https://api.gateway.sbtc.dev/v1/payment_intents \\
   -H "Authorization: Bearer sk_test_1234567890abcdef..." \\
   -H "Content-Type: application/json" \\
@@ -207,7 +209,7 @@ console.log(paymentIntent)`}</code>
                 </div>
                 <Button
                   variant="outline"
-                  onClick={() =>
+                  onClick={(event: React.MouseEvent<HTMLButtonElement>) =>
                     copyToClipboard(`const response = await fetch('https://api.gateway.sbtc.dev/v1/payment_intents', {
   method: 'POST',
   headers: {
@@ -270,11 +272,19 @@ SBTC_SECRET_KEY=sk_test_1234567890abcdef...
 NEXT_PUBLIC_SBTC_PUBLISHABLE_KEY=pk_test_1234567890abcdef...`}</code>
                     </pre>
                   </div>
-                  <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-                    <p className="text-sm text-yellow-800">
-                      <strong>Note:</strong> Only use the NEXT_PUBLIC_ prefix for publishable keys that are safe to
-                      expose in client-side code.
-                    </p>
+                  <div className="space-y-3">
+                    <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
+                      <p className="text-sm text-green-800">
+                        <strong>✓ Safe:</strong> Publishable keys (pk_) are designed to be exposed in client-side code.
+                        The NEXT_PUBLIC_ prefix is correct and secure for these keys.
+                      </p>
+                    </div>
+                    <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
+                      <p className="text-sm text-red-800">
+                        <strong>⚠ Never expose:</strong> Secret keys (sk_) must never use NEXT_PUBLIC_ prefix or be
+                        exposed in client-side code. Keep these server-side only.
+                      </p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
