@@ -13,40 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Key, Plus, Copy, Eye, EyeOff, Trash2, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
-// Mock API keys data
-const apiKeys = [
-  {
-    id: "pk_live_1234567890abcdef",
-    name: "Production Key",
-    type: "publishable",
-    environment: "live",
-    created: "2024-01-15T10:30:00Z",
-    lastUsed: "2024-01-15T14:22:00Z",
-    permissions: ["read", "write"],
-    status: "active",
-  },
-  {
-    id: "sk_live_abcdef1234567890",
-    name: "Production Secret",
-    type: "secret",
-    environment: "live",
-    created: "2024-01-15T10:30:00Z",
-    lastUsed: "2024-01-15T14:20:00Z",
-    permissions: ["read", "write", "admin"],
-    status: "active",
-  },
-  {
-    id: "pk_test_9876543210fedcba",
-    name: "Test Key",
-    type: "publishable",
-    environment: "test",
-    created: "2024-01-10T09:15:00Z",
-    lastUsed: "2024-01-14T16:45:00Z",
-    permissions: ["read", "write"],
-    status: "active",
-  },
-]
-
 export default function APIKeysPage() {
   const { toast } = useToast()
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
@@ -57,6 +23,39 @@ export default function APIKeysPage() {
     environment: "test",
     permissions: ["read"],
   })
+
+  const [apiKeys, setApiKeys] = useState([
+    {
+      id: "pk_live_1234567890abcdef",
+      name: "Production Key",
+      type: "publishable",
+      environment: "live",
+      created: "2024-01-15T10:30:00Z",
+      lastUsed: "2024-01-15T14:22:00Z",
+      permissions: ["read", "write"],
+      status: "active",
+    },
+    {
+      id: "sk_live_abcdef1234567890",
+      name: "Production Secret",
+      type: "secret",
+      environment: "live",
+      created: "2024-01-15T10:30:00Z",
+      lastUsed: "2024-01-15T14:20:00Z",
+      permissions: ["read", "write", "admin"],
+      status: "active",
+    },
+    {
+      id: "pk_test_9876543210fedcba",
+      name: "Test Key",
+      type: "publishable",
+      environment: "test",
+      created: "2024-01-10T09:15:00Z",
+      lastUsed: "2024-01-14T16:45:00Z",
+      permissions: ["read", "write"],
+      status: "active",
+    },
+  ])
 
   const toggleSecretVisibility = (keyId: string) => {
     setShowSecrets((prev) => ({ ...prev, [keyId]: !prev[keyId] }))
@@ -71,6 +70,28 @@ export default function APIKeysPage() {
   }
 
   const handleCreateKey = () => {
+    if (!newKeyData.name.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a name for your API key.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const newKey = {
+      id: generateApiKey(newKeyData.type, newKeyData.environment),
+      name: newKeyData.name,
+      type: newKeyData.type,
+      environment: newKeyData.environment,
+      created: new Date().toISOString(),
+      lastUsed: "Never",
+      permissions: newKeyData.permissions,
+      status: "active",
+    }
+
+    setApiKeys((prev) => [newKey, ...prev])
+
     toast({
       title: "API key created",
       description: "Your new API key has been generated successfully.",
@@ -80,6 +101,7 @@ export default function APIKeysPage() {
   }
 
   const handleRevokeKey = (keyId: string) => {
+    setApiKeys((prev) => prev.filter((key) => key.id !== keyId))
     toast({
       title: "API key revoked",
       description: "The API key has been revoked and is no longer valid.",
@@ -117,6 +139,13 @@ export default function APIKeysPage() {
     if (show) return key
     const prefix = key.split("_")[0] + "_" + key.split("_")[1] + "_"
     return prefix + "•".repeat(20)
+  }
+
+  const generateApiKey = (type: string, environment: string) => {
+    const prefix = type === "secret" ? "sk" : "pk"
+    const env = environment === "live" ? "live" : "test"
+    const randomString = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+    return `${prefix}_${env}_${randomString}`
   }
 
   return (

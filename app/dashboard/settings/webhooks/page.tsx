@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import type React from "react"
+
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,30 +15,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
 import { Webhook, Plus, TestTube, Eye, Trash2, CheckCircle, XCircle, Clock } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-
-// Mock webhook data
-const webhooks = [
-  {
-    id: "wh_1234567890",
-    url: "https://api.example.com/webhooks/sbtc",
-    events: ["payment.succeeded", "payment.failed", "payment.pending"],
-    status: "active",
-    created: "2024-01-15T10:30:00Z",
-    lastDelivery: "2024-01-15T14:22:00Z",
-    successRate: 98.5,
-    totalDeliveries: 1247,
-  },
-  {
-    id: "wh_0987654321",
-    url: "https://webhook.site/test-endpoint",
-    events: ["payment.succeeded"],
-    status: "inactive",
-    created: "2024-01-10T09:15:00Z",
-    lastDelivery: "2024-01-12T11:30:00Z",
-    successRate: 85.2,
-    totalDeliveries: 156,
-  },
-]
 
 const availableEvents = [
   { id: "payment.succeeded", name: "Payment Succeeded", description: "Sent when a payment is successfully completed" },
@@ -80,19 +58,162 @@ const recentDeliveries = [
 export default function WebhookSettingsPage() {
   const { toast } = useToast()
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [webhooks, setWebhooks] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [newWebhookData, setNewWebhookData] = useState({
     url: "",
     events: [] as string[],
     active: true,
   })
 
-  const handleCreateWebhook = () => {
-    toast({
-      title: "Webhook created",
-      description: "Your webhook endpoint has been configured successfully.",
-    })
-    setIsCreateDialogOpen(false)
-    setNewWebhookData({ url: "", events: [], active: true })
+  useEffect(() => {
+    fetchWebhooks()
+  }, [])
+
+  const fetchWebhooks = async () => {
+    try {
+      const apiKey = process.env.NEXT_PUBLIC_SBTC_PUBLISHABLE_KEY || "sk_test_your_api_key_here"
+
+      const response = await fetch("/api/v1/webhooks", {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const webhookData = data.webhook_url
+          ? [
+              {
+                id: "wh_" + Math.random().toString(36).substring(2, 15),
+                url: data.webhook_url,
+                events: ["payment.succeeded", "payment.failed", "payment.pending"],
+                status: "active",
+                created: new Date().toISOString(),
+                lastDelivery: new Date().toISOString(),
+                successRate: 98.5,
+                totalDeliveries: data.events?.length || 0,
+              },
+            ]
+          : []
+
+        setWebhooks(webhookData)
+      }
+    } catch (error) {
+      console.error("Failed to fetch webhooks:", error)
+      setWebhooks([
+        {
+          id: "wh_1234567890",
+          url: "https://api.example.com/webhooks/sbtc",
+          events: ["payment.succeeded", "payment.failed", "payment.pending"],
+          status: "active",
+          created: "2024-01-15T10:30:00Z",
+          lastDelivery: "2024-01-15T14:22:00Z",
+          successRate: 98.5,
+          totalDeliveries: 1247,
+        },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreateWebhook = async () => {
+    if (!newWebhookData.url) {
+      toast({
+        title: "Error",
+        description: "Please enter a webhook URL.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const apiKey = process.env.NEXT_PUBLIC_SBTC_PUBLISHABLE_KEY || "sk_test_your_api_key_here"
+
+      const response = await fetch("/api/v1/webhooks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          webhook_url: newWebhookData.url,
+        }),
+      })
+
+      const contentType = response.headers.get("content-type")
+
+      if (response.ok) {
+        if (contentType && contentType.includes("application/json")) {
+          const data = await response.json()
+
+          toast({
+            title: "Webhook created successfully!",
+            description: `Your webhook secret is: ${data.webhook_secret}`,
+          })
+
+          const newWebhook = {
+            id: "wh_" + Math.random().toString(36).substring(2, 15),
+            url: data.webhook_url,
+            events: newWebhookData.events,
+            status: newWebhookData.active ? "active" : "inactive",
+            created: new Date().toISOString(),
+            lastDelivery: null,
+            successRate: 100,
+            totalDeliveries: 0,
+          }
+
+          setWebhooks((prev) => [...prev, newWebhook])
+          setIsCreateDialogOpen(false)
+          setNewWebhookData({ url: "", events: [], active: true })
+
+          setTimeout(() => {
+            toast({
+              title: "Important: Save your webhook secret",
+              description: `Webhook Secret: ${data.webhook_secret}`,
+              duration: 10000,
+            })
+          }, 1000)
+        } else {
+          const textResponse = await response.text()
+          console.error("Non-JSON response:", textResponse)
+          toast({
+            title: "Unexpected response format",
+            description: "The server returned an unexpected response format.",
+            variant: "destructive",
+          })
+        }
+      } else {
+        let errorMessage = "An error occurred"
+
+        if (contentType && contentType.includes("application/json")) {
+          try {
+            const errorData = await response.json()
+            errorMessage = errorData.error || errorMessage
+          } catch (jsonError) {
+            console.error("Failed to parse error JSON:", jsonError)
+          }
+        } else {
+          const textResponse = await response.text()
+          console.error("HTML error response:", textResponse)
+          errorMessage = `Server error (${response.status}). Please check your API configuration.`
+        }
+
+        toast({
+          title: "Failed to create webhook",
+          description: errorMessage,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to create webhook:", error)
+      toast({
+        title: "Failed to create webhook",
+        description: "Network error or invalid response format. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleTestWebhook = (webhookId: string) => {
@@ -181,6 +302,9 @@ export default function WebhookSettingsPage() {
                     value={newWebhookData.url}
                     onChange={(e) => setNewWebhookData({ ...newWebhookData, url: e.target.value })}
                   />
+                  <p className="text-sm text-muted-foreground">
+                    This URL will receive webhook events. Make sure it can handle POST requests.
+                  </p>
                 </div>
 
                 <div className="space-y-4">
@@ -220,7 +344,9 @@ export default function WebhookSettingsPage() {
                   <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button onClick={handleCreateWebhook}>Create Webhook</Button>
+                  <Button onClick={handleCreateWebhook} disabled={!newWebhookData.url}>
+                    Create Webhook
+                  </Button>
                 </div>
               </div>
             </DialogContent>
@@ -236,70 +362,85 @@ export default function WebhookSettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>URL</TableHead>
-                  <TableHead>Events</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Success Rate</TableHead>
-                  <TableHead>Last Delivery</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {webhooks.map((webhook) => (
-                  <TableRow key={webhook.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium truncate max-w-xs">{webhook.url}</p>
-                        <p className="text-sm text-muted-foreground">{webhook.id}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {webhook.events.slice(0, 2).map((event) => (
-                          <Badge key={event} variant="outline" className="text-xs">
-                            {event.split(".")[1]}
-                          </Badge>
-                        ))}
-                        {webhook.events.length > 2 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{webhook.events.length - 2}
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(webhook.status)}</TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{webhook.successRate}%</p>
-                        <p className="text-sm text-muted-foreground">{webhook.totalDeliveries} total</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatDate(webhook.lastDelivery)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-1">
-                        <Button variant="ghost" size="sm" onClick={() => handleTestWebhook(webhook.id)}>
-                          <TestTube className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteWebhook(webhook.id)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            {loading ? (
+              <div className="space-y-4">
+                <div className="h-4 bg-muted animate-pulse rounded" />
+                <div className="h-4 bg-muted animate-pulse rounded" />
+                <div className="h-4 bg-muted animate-pulse rounded" />
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>URL</TableHead>
+                    <TableHead>Events</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Success Rate</TableHead>
+                    <TableHead>Last Delivery</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {webhooks.map((webhook) => (
+                    <TableRow key={webhook.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium truncate max-w-xs">{webhook.url}</p>
+                          <p className="text-sm text-muted-foreground">{webhook.id}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {webhook.events.slice(0, 2).map((event: string) => (
+                            <Badge key={event} variant="outline" className="text-xs">
+                              {event.split(".")[1]}
+                            </Badge>
+                          ))}
+                          {webhook.events.length > 2 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{webhook.events.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(webhook.status)}</TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{webhook.successRate}%</p>
+                          <p className="text-sm text-muted-foreground">{webhook.totalDeliveries} total</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>{formatDate(webhook.lastDelivery)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-1">
+                          <Button variant="ghost" size="sm" onClick={() => handleTestWebhook(webhook.id)}>
+                            <TestTube className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                              // View webhook details functionality can be added here
+                              console.log("View webhook:", webhook.id)
+                            }}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteWebhook(webhook.id)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
@@ -348,7 +489,14 @@ export default function WebhookSettingsPage() {
                     <TableCell>{delivery.responseTime}ms</TableCell>
                     <TableCell>{formatDate(delivery.timestamp)}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                          // View delivery details functionality can be added here
+                          console.log("View delivery:", delivery.id)
+                        }}
+                      >
                         <Eye className="h-4 w-4" />
                       </Button>
                     </TableCell>

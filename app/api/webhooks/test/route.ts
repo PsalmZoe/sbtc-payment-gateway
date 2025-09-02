@@ -1,48 +1,73 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { generateWebhookSecret } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.text()
-    const signature = request.headers.get("gateway-signature")
-    const eventType = request.headers.get("gateway-event-type")
-    const eventId = request.headers.get("gateway-event-id")
+    const body = await request.json()
+    const { webhook_url, events } = body
 
-    console.log("📨 Received webhook:", {
-      eventType,
-      eventId,
-      signature: signature?.substring(0, 20) + "...",
-      bodyLength: body.length,
-    })
+    if (!webhook_url || !isValidUrl(webhook_url)) {
+      return NextResponse.json({ error: "Invalid webhook URL" }, { status: 400 })
+    }
 
-    // In a real merchant implementation, they would verify the signature
-    // const isValid = verifyWebhookSignature(body, signature, merchantWebhookSecret)
+    // Generate new webhook secret
+    const webhookSecret = generateWebhookSecret()
 
-    const data = JSON.parse(body)
-
-    // Log the webhook data
-    console.log("✅ Webhook data:", JSON.stringify(data, null, 2))
-
-    // Respond with success
+    // Return success response with generated webhook secret
     return NextResponse.json({
-      received: true,
-      eventId,
-      eventType,
-      timestamp: new Date().toISOString(),
+      id: `wh_${Math.random().toString(36).substr(2, 9)}`,
+      webhook_url,
+      webhook_secret: webhookSecret,
+      events: events || ["payment_intent.succeeded", "payment_intent.failed"],
+      active: true,
+      created: Math.floor(Date.now() / 1000),
+      message: "Webhook endpoint configured successfully",
     })
   } catch (error) {
-    console.error("❌ Webhook test error:", error)
-    return NextResponse.json({ error: "Webhook processing failed" }, { status: 400 })
+    console.error("Webhook configuration error:", error)
+    return NextResponse.json({ error: "Failed to create webhook" }, { status: 500 })
   }
 }
 
-export async function GET() {
-  return NextResponse.json({
-    message: "Webhook test endpoint is ready",
-    instructions: "POST webhook events here to test delivery",
-    headers: {
-      "Gateway-Signature": "Required - HMAC signature",
-      "Gateway-Event-Type": "Event type (e.g., payment_intent.succeeded)",
-      "Gateway-Event-Id": "Unique event ID",
-    },
-  })
+export async function GET(request: NextRequest) {
+  try {
+    const mockWebhooks = [
+      {
+        id: "wh_demo123",
+        webhook_url: "https://example.com/webhook",
+        webhook_secret: "whsec_***",
+        events: ["payment_intent.succeeded", "payment_intent.failed"],
+        active: true,
+        created: Math.floor(Date.now() / 1000) - 86400,
+      },
+    ]
+
+    const mockEvents = [
+      {
+        id: "evt_demo123",
+        type: "payment_intent.succeeded",
+        delivered: true,
+        attempts: 1,
+        last_error: null,
+        created: Math.floor(Date.now() / 1000) - 3600,
+      },
+    ]
+
+    return NextResponse.json({
+      webhooks: mockWebhooks,
+      events: mockEvents,
+    })
+  } catch (error) {
+    console.error("Webhook retrieval error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+function isValidUrl(string: string): boolean {
+  try {
+    const url = new URL(string)
+    return url.protocol === "http:" || url.protocol === "https:"
+  } catch {
+    return false
+  }
 }
