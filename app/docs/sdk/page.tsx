@@ -83,8 +83,7 @@ export default function SDKDocumentationPage() {
                       Include the SDK directly in your HTML. The SDK will be available globally as <code>sBTCGateway</code>.
                     </p>
                     <div className="bg-gray-900 text-gray-100 p-4 rounded text-sm relative">
-                      <pre>{`<script src="https://gateway.sbtc.dev/js/sbtc-gateway.js" 
-        data-publishable-key="pk_test_..."></script>`}</pre>
+                      <pre>{`<script src="https://gateway.sbtc.dev/js/sbtc-gateway.js" data-publishable-key="pk_test_..."></script>`}</pre>
                       <Button 
                         variant="outline" 
                         size="sm" 
@@ -125,4 +124,24 @@ export default function SDKDocumentationPage() {
                     <CardTitle>Yarn Installation</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="bg-gray-900 text-gray-100 p-4\
+                    <div className="bg-gray-900 text-gray-100 p-4 rounded text-sm relative">
+                      <pre>{`yarn add @sbtc-gateway/sdk`}</pre>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="absolute top-2 right-2 bg-transparent"
+                        onClick={() => copyToClipboard(`yarn add @sbtc-gateway/sdk`)}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
