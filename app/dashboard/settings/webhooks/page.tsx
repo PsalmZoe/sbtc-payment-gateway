@@ -70,8 +70,26 @@ export default function WebhookSettingsPage() {
     fetchWebhooks()
   }, [])
 
+  useEffect(() => {
+    if (webhooks.length > 0 && !loading) {
+      localStorage.setItem("sbtc-webhooks", JSON.stringify(webhooks))
+    }
+  }, [webhooks, loading])
+
   const fetchWebhooks = async () => {
     try {
+      const savedWebhooks = localStorage.getItem("sbtc-webhooks")
+      if (savedWebhooks) {
+        try {
+          const parsedWebhooks = JSON.parse(savedWebhooks)
+          setWebhooks(parsedWebhooks)
+          setLoading(false)
+          return
+        } catch (error) {
+          console.error("Failed to parse saved webhooks:", error)
+        }
+      }
+
       const apiKey = process.env.NEXT_PUBLIC_SBTC_PUBLISHABLE_KEY || "sk_test_your_api_key_here"
 
       const response = await fetch("/api/v1/webhooks", {
@@ -154,7 +172,7 @@ export default function WebhookSettingsPage() {
           })
 
           const newWebhook = {
-            id: "wh_" + Math.random().toString(36).substring(2, 15),
+            id: data.id || "wh_" + Math.random().toString(36).substring(2, 15),
             url: data.webhook_url,
             events: newWebhookData.events,
             status: newWebhookData.active ? "active" : "inactive",
@@ -162,6 +180,7 @@ export default function WebhookSettingsPage() {
             lastDelivery: null,
             successRate: 100,
             totalDeliveries: 0,
+            webhookSecret: data.webhook_secret,
           }
 
           setWebhooks((prev) => [...prev, newWebhook])
@@ -224,6 +243,7 @@ export default function WebhookSettingsPage() {
   }
 
   const handleDeleteWebhook = (webhookId: string) => {
+    setWebhooks((prev) => prev.filter((webhook) => webhook.id !== webhookId))
     toast({
       title: "Webhook deleted",
       description: "The webhook endpoint has been removed.",

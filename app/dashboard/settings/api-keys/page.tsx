@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,38 +24,89 @@ export default function APIKeysPage() {
     permissions: ["read"],
   })
 
-  const [apiKeys, setApiKeys] = useState([
-    {
-      id: "pk_live_1234567890abcdef",
-      name: "Production Key",
-      type: "publishable",
-      environment: "live",
-      created: "2024-01-15T10:30:00Z",
-      lastUsed: "2024-01-15T14:22:00Z",
-      permissions: ["read", "write"],
-      status: "active",
-    },
-    {
-      id: "sk_live_abcdef1234567890",
-      name: "Production Secret",
-      type: "secret",
-      environment: "live",
-      created: "2024-01-15T10:30:00Z",
-      lastUsed: "2024-01-15T14:20:00Z",
-      permissions: ["read", "write", "admin"],
-      status: "active",
-    },
-    {
-      id: "pk_test_9876543210fedcba",
-      name: "Test Key",
-      type: "publishable",
-      environment: "test",
-      created: "2024-01-10T09:15:00Z",
-      lastUsed: "2024-01-14T16:45:00Z",
-      permissions: ["read", "write"],
-      status: "active",
-    },
-  ])
+  const [apiKeys, setApiKeys] = useState<any[]>([])
+
+  useEffect(() => {
+    const savedKeys = localStorage.getItem("sbtc-api-keys")
+    if (savedKeys) {
+      try {
+        setApiKeys(JSON.parse(savedKeys))
+      } catch (error) {
+        console.error("Failed to parse saved API keys:", error)
+        setApiKeys([
+          {
+            id: "pk_live_1234567890abcdef",
+            name: "Production Key",
+            type: "publishable",
+            environment: "live",
+            created: "2024-01-15T10:30:00Z",
+            lastUsed: "2024-01-15T14:22:00Z",
+            permissions: ["read", "write"],
+            status: "active",
+          },
+          {
+            id: "sk_live_abcdef1234567890",
+            name: "Production Secret",
+            type: "secret",
+            environment: "live",
+            created: "2024-01-15T10:30:00Z",
+            lastUsed: "2024-01-15T14:20:00Z",
+            permissions: ["read", "write", "admin"],
+            status: "active",
+          },
+          {
+            id: "pk_test_9876543210fedcba",
+            name: "Test Key",
+            type: "publishable",
+            environment: "test",
+            created: "2024-01-10T09:15:00Z",
+            lastUsed: "2024-01-14T16:45:00Z",
+            permissions: ["read", "write"],
+            status: "active",
+          },
+        ])
+      }
+    } else {
+      setApiKeys([
+        {
+          id: "pk_live_1234567890abcdef",
+          name: "Production Key",
+          type: "publishable",
+          environment: "live",
+          created: "2024-01-15T10:30:00Z",
+          lastUsed: "2024-01-15T14:22:00Z",
+          permissions: ["read", "write"],
+          status: "active",
+        },
+        {
+          id: "sk_live_abcdef1234567890",
+          name: "Production Secret",
+          type: "secret",
+          environment: "live",
+          created: "2024-01-15T10:30:00Z",
+          lastUsed: "2024-01-15T14:20:00Z",
+          permissions: ["read", "write", "admin"],
+          status: "active",
+        },
+        {
+          id: "pk_test_9876543210fedcba",
+          name: "Test Key",
+          type: "publishable",
+          environment: "test",
+          created: "2024-01-10T09:15:00Z",
+          lastUsed: "2024-01-14T16:45:00Z",
+          permissions: ["read", "write"],
+          status: "active",
+        },
+      ])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (apiKeys.length > 0) {
+      localStorage.setItem("sbtc-api-keys", JSON.stringify(apiKeys))
+    }
+  }, [apiKeys])
 
   const toggleSecretVisibility = (keyId: string) => {
     setShowSecrets((prev) => ({ ...prev, [keyId]: !prev[keyId] }))

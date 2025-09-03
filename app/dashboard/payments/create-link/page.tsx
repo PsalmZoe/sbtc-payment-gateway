@@ -28,12 +28,54 @@ export default function CreatePaymentLinkPage() {
   })
   const [generatedLink, setGeneratedLink] = useState("")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Generate mock payment link
-    const linkId = Math.random().toString(36).substring(2, 15)
-    const link = `https://gateway.sbtc.dev/pay/${linkId}`
-    setGeneratedLink(link)
+
+    try {
+      const response = await fetch("/api/v1/payment_intents", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer sk_test_mock_key`, // In production, get from user's API keys
+        },
+        body: JSON.stringify({
+          amount: Math.floor(Number.parseFloat(formData.amount) * (formData.currency === "sBTC" ? 100000000 : 1)),
+          metadata: {
+            description: formData.description,
+            success_url: formData.successUrl,
+            cancel_url: formData.cancelUrl,
+            expires_in: formData.expiresIn,
+            collect_customer_info: formData.collectCustomerInfo,
+            allow_custom_amount: formData.allowCustomAmount,
+            created_via: "dashboard_create_link",
+          },
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to create payment intent: ${response.status}`)
+      }
+
+      const paymentIntent = await response.json()
+      setGeneratedLink(paymentIntent.checkoutUrl)
+
+      toast({
+        title: "Payment link created",
+        description: "Your sBTC payment link is ready to share.",
+      })
+    } catch (error) {
+      console.error("Failed to create payment intent:", error)
+      const linkId = Math.random().toString(36).substring(2, 15)
+      const clientSecret = Math.random().toString(36).substring(2, 15)
+      const link = `${window.location.origin}/checkout/${linkId}?client_secret=${clientSecret}`
+      setGeneratedLink(link)
+
+      toast({
+        title: "Demo link created",
+        description: "Created a demo payment link. Connect your API keys for live payments.",
+        variant: "default",
+      })
+    }
   }
 
   const copyToClipboard = (text: string) => {

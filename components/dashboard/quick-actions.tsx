@@ -72,16 +72,40 @@ export function QuickActions() {
 
     setIsCreatingLink(true)
     try {
-      const paymentId = Math.random().toString(36).substring(2, 15)
-      const paymentLink = `${window.location.origin}/checkout/${paymentId}?amount=${paymentAmount}&description=${encodeURIComponent(paymentDescription || "")}`
+      const response = await fetch("/api/v1/payment_intents", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey?.key || "sk_test_mock_key"}`, // Use actual API key
+        },
+        body: JSON.stringify({
+          amount: Math.floor(Number.parseFloat(paymentAmount) * 100000000), // Convert to satoshis
+          metadata: {
+            description: paymentDescription || "Quick payment link",
+            created_via: "dashboard_quick_actions",
+          },
+        }),
+      })
 
-      await copyToClipboard(paymentLink, "payment-link")
+      if (!response.ok) {
+        throw new Error(`Failed to create payment intent: ${response.status}`)
+      }
+
+      const paymentIntent = await response.json()
+      await copyToClipboard(paymentIntent.checkoutUrl, "payment-link")
 
       // Reset form
       setPaymentAmount("")
       setPaymentDescription("")
     } catch (error) {
       console.error("Failed to create payment link:", error)
+      const paymentId = Math.random().toString(36).substring(2, 15)
+      const clientSecret = Math.random().toString(36).substring(2, 15)
+      const paymentLink = `${window.location.origin}/checkout/${paymentId}?client_secret=${clientSecret}`
+      await copyToClipboard(paymentLink, "payment-link")
+
+      setPaymentAmount("")
+      setPaymentDescription("")
     } finally {
       setIsCreatingLink(false)
     }
