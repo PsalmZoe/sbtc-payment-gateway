@@ -1,0 +1,3 @@
+#V2
+(contract-call? .payment-gateway set-authorized-caller 'STCHZ4BJWN1EACT9F1FCA1PRMXV8ZARWVKMNJ5NP true)
+(contract-call? .payment-gateway set-authorized-caller 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM true)
