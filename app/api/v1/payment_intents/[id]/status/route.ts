@@ -15,11 +15,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const result = await db.query(
       `
       UPDATE payment_intents 
-      SET status = $2, transaction_hash = $3, updated_at = CURRENT_TIMESTAMP
+      SET status = $2, tx_hash = $3, block_height = $4, updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
       RETURNING *
     `,
-      [intentId, status, tx_hash || null],
+      [intentId, status, tx_hash || null, block_height || null],
     )
 
     if (result.rows.length === 0) {
@@ -33,10 +33,17 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({
       id: updatedIntent.id,
       status: updatedIntent.status,
-      tx_hash: updatedIntent.transaction_hash,
+      tx_hash: updatedIntent.tx_hash,
+      block_height: updatedIntent.block_height,
     })
   } catch (error) {
     console.error("[v0] Error updating payment intent status:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }

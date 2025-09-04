@@ -19,6 +19,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const [walletConnected, setWalletConnected] = useState(false)
   const [qrCodeData, setQrCodeData] = useState<string>("")
   const [errorMessage, setErrorMessage] = useState<string>("")
+  const [detectedWallet, setDetectedWallet] = useState<string>("")
 
   useEffect(() => {
     const qrData = `stacks:transfer?recipient=ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM&amount=${amount}&memo=${paymentIntentId}`
@@ -32,19 +33,28 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const checkWalletConnection = async () => {
     try {
       if (typeof window !== "undefined") {
-        if ((window as any).LeatherProvider || (window as any).HiroWalletProvider) {
-          console.log("[v0] Leather/Hiro wallet detected")
+        if ((window as any).HiroWalletProvider) {
+          console.log("[v0] Hiro wallet detected")
           setWalletConnected(true)
+          setDetectedWallet("Hiro")
+          return
+        }
+        if ((window as any).LeatherProvider) {
+          console.log("[v0] Leather wallet detected")
+          setWalletConnected(true)
+          setDetectedWallet("Leather")
           return
         }
         if ((window as any).XverseProviders?.StacksProvider) {
           console.log("[v0] Xverse wallet detected")
           setWalletConnected(true)
+          setDetectedWallet("Xverse")
           return
         }
         if ((window as any).StacksProvider) {
           console.log("[v0] Generic Stacks provider detected")
           setWalletConnected(true)
+          setDetectedWallet("Generic")
           return
         }
       }
@@ -62,12 +72,12 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       let stacksProvider = null
 
       if (typeof window !== "undefined") {
-        if ((window as any).LeatherProvider) {
-          stacksProvider = (window as any).LeatherProvider
-          console.log("[v0] Using Leather wallet")
-        } else if ((window as any).HiroWalletProvider) {
+        if ((window as any).HiroWalletProvider) {
           stacksProvider = (window as any).HiroWalletProvider
           console.log("[v0] Using Hiro wallet")
+        } else if ((window as any).LeatherProvider) {
+          stacksProvider = (window as any).LeatherProvider
+          console.log("[v0] Using Leather wallet")
         } else if ((window as any).XverseProviders?.StacksProvider) {
           stacksProvider = (window as any).XverseProviders.StacksProvider
           console.log("[v0] Using Xverse wallet")
@@ -78,7 +88,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       }
 
       if (!stacksProvider) {
-        setErrorMessage("Please install Leather wallet to continue. Visit leather.io")
+        setErrorMessage("Please install a Stacks wallet (Hiro, Leather, or Xverse) to continue")
         setStatus("failed")
         return
       }
@@ -86,8 +96,8 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       console.log("[v0] Requesting wallet connection...")
 
       const transferOptions = {
-        recipient: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", // Payment gateway address
-        amount: amount, // Amount in satoshis
+        recipient: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
+        amount: amount,
         memo: `Payment: ${paymentIntentId}`,
         network: "testnet",
       }
@@ -95,8 +105,19 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       console.log("[v0] Initiating STX transfer:", transferOptions)
       setStatus("pending")
 
-      // Request STX transfer
-      const result = await stacksProvider.request("stx_transferTokens", transferOptions)
+      let result
+      try {
+        result = await stacksProvider.request("stx_transferTokens", transferOptions)
+      } catch (walletError: any) {
+        if (walletError.message?.includes("User rejected")) {
+          throw new Error("Payment was cancelled by user")
+        } else if (walletError.message?.includes("Insufficient")) {
+          throw new Error("Insufficient STX balance. Get testnet STX from the faucet.")
+        } else {
+          throw new Error(`Wallet error: ${walletError.message || "Unknown wallet error"}`)
+        }
+      }
+
       console.log("[v0] Transfer result:", result)
 
       if (result.txId || result.txid) {
@@ -142,16 +163,16 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         }
 
         if (attempts < maxAttempts) {
-          setTimeout(checkStatus, 3000) // Check every 3 seconds
+          setTimeout(checkStatus, 3000)
         } else {
-          setStatus("confirmed") // Assume success after max attempts
+          setStatus("confirmed")
         }
       } catch (error) {
         console.error("[v0] Status check error:", error)
         if (attempts < maxAttempts) {
           setTimeout(checkStatus, 5000)
         } else {
-          setStatus("confirmed") // Assume success if we can't verify
+          setStatus("confirmed")
         }
       }
     }
@@ -176,7 +197,8 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       if (response.ok) {
         console.log("[v0] Payment status updated successfully")
       } else {
-        console.error("[v0] Failed to update payment status:", response.status)
+        const errorData = await response.json().catch(() => ({}))
+        console.error("[v0] Failed to update payment status:", response.status, errorData)
       }
     } catch (error) {
       console.error("[v0] Failed to update payment status:", error)
@@ -252,15 +274,19 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         size="lg"
       >
         <Wallet className="mr-2 h-5 w-5" />
-        {status === "idle" || status === "failed" ? "Pay with Leather Wallet" : "Processing..."}
+        {status === "idle" || status === "failed" ? `Pay with ${detectedWallet || "Stacks"} Wallet` : "Processing..."}
       </Button>
 
       <div className="text-center">
-        <p className="text-xs text-gray-500 mb-2">Supported wallets: Leather (Hiro), Xverse</p>
+        <p className="text-xs text-gray-500 mb-2">Supported wallets: Hiro, Leather, Xverse</p>
         {!walletConnected && (
           <div className="text-xs text-red-500 space-y-1">
             <p>No Stacks wallet detected.</p>
             <div className="space-x-2">
+              <a href="https://wallet.hiro.so" target="_blank" rel="noopener noreferrer" className="underline">
+                Install Hiro
+              </a>
+              <span>|</span>
               <a href="https://leather.io" target="_blank" rel="noopener noreferrer" className="underline">
                 Install Leather
               </a>
