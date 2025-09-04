@@ -89,16 +89,18 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         console.log("[v0] Connecting to Hiro wallet")
 
         try {
-          const response = await (window as any).HiroWalletProvider.request({
+          // Connect to wallet first
+          const accounts = await (window as any).HiroWalletProvider.request({
             method: "stx_getAccounts",
           })
 
-          if (!response || response.length === 0) {
+          if (!accounts || !accounts.result || accounts.result.length === 0) {
             throw new Error("Please connect your Hiro wallet first")
           }
 
           console.log("[v0] Hiro wallet connected, initiating transfer")
 
+          // Send STX transfer
           const transferResponse = await (window as any).HiroWalletProvider.request({
             method: "stx_transferTokens",
             params: {
@@ -108,12 +110,13 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
             },
           })
 
-          if (transferResponse && transferResponse.txid) {
-            setTxHash(transferResponse.txid)
+          if (transferResponse && transferResponse.result && transferResponse.result.txid) {
+            const txId = transferResponse.result.txid
+            setTxHash(txId)
             setStatus("pending")
-            console.log("[v0] Hiro transaction submitted:", transferResponse.txid)
-            await updatePaymentStatus(paymentIntentId, "succeeded", transferResponse.txid)
-            pollForConfirmation(transferResponse.txid)
+            console.log("[v0] Hiro transaction submitted:", txId)
+            await updatePaymentStatus(paymentIntentId, "succeeded", txId)
+            pollForConfirmation(txId)
           } else {
             throw new Error("Transaction was cancelled or failed")
           }
@@ -125,26 +128,29 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         console.log("[v0] Connecting to Leather wallet")
 
         try {
+          // Connect to Leather wallet
           const accounts = await (window as any).LeatherProvider.request("getAddresses")
 
-          if (!accounts || accounts.length === 0) {
+          if (!accounts || !accounts.result || accounts.result.addresses.length === 0) {
             throw new Error("Please connect your Leather wallet first")
           }
 
           console.log("[v0] Leather wallet connected, initiating transfer")
 
+          // Send STX transfer using Leather's API
           const transferResponse = await (window as any).LeatherProvider.request("stx_transferTokens", {
             recipient: CONTRACT_ADDRESS,
-            amount: amountInMicroStx.toString(),
+            amount: amountInMicroStx,
             memo: `Payment: ${paymentIntentId}`,
           })
 
-          if (transferResponse && transferResponse.txid) {
-            setTxHash(transferResponse.txid)
+          if (transferResponse && transferResponse.result && transferResponse.result.txid) {
+            const txId = transferResponse.result.txid
+            setTxHash(txId)
             setStatus("pending")
-            console.log("[v0] Leather transaction submitted:", transferResponse.txid)
-            await updatePaymentStatus(paymentIntentId, "succeeded", transferResponse.txid)
-            pollForConfirmation(transferResponse.txid)
+            console.log("[v0] Leather transaction submitted:", txId)
+            await updatePaymentStatus(paymentIntentId, "succeeded", txId)
+            pollForConfirmation(txId)
           } else {
             throw new Error("Transaction was cancelled or failed")
           }
@@ -158,26 +164,29 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         try {
           const xverseProvider = (window as any).XverseProviders.StacksProvider
 
-          const response = await xverseProvider.request("getAddresses")
+          // Connect to Xverse wallet
+          const accounts = await xverseProvider.request("getAddresses")
 
-          if (!response || !response.addresses || response.addresses.length === 0) {
+          if (!accounts || !accounts.result || !accounts.result.addresses || accounts.result.addresses.length === 0) {
             throw new Error("Please connect your Xverse wallet first")
           }
 
           console.log("[v0] Xverse wallet connected, initiating transfer")
 
+          // Send STX transfer using Xverse's API
           const transferResponse = await xverseProvider.request("stx_transferTokens", {
             recipient: CONTRACT_ADDRESS,
-            amount: amountInMicroStx.toString(),
+            amount: amountInMicroStx,
             memo: `Payment: ${paymentIntentId}`,
           })
 
-          if (transferResponse && transferResponse.txid) {
-            setTxHash(transferResponse.txid)
+          if (transferResponse && transferResponse.result && transferResponse.result.txid) {
+            const txId = transferResponse.result.txid
+            setTxHash(txId)
             setStatus("pending")
-            console.log("[v0] Xverse transaction submitted:", transferResponse.txid)
-            await updatePaymentStatus(paymentIntentId, "succeeded", transferResponse.txid)
-            pollForConfirmation(transferResponse.txid)
+            console.log("[v0] Xverse transaction submitted:", txId)
+            await updatePaymentStatus(paymentIntentId, "succeeded", txId)
+            pollForConfirmation(txId)
           } else {
             throw new Error("Transaction was cancelled or failed")
           }
@@ -186,9 +195,48 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           throw xverseError
         }
       } else {
-        console.log("[v0] No wallet API detected, using deep link approach")
+        console.log("[v0] No wallet extension detected, trying alternative approach")
 
+        // Try to detect if any Stacks provider exists
+        const stacksProvider = (window as any).StacksProvider || (window as any).btc?.request
+
+        if (stacksProvider) {
+          console.log("[v0] Found generic Stacks provider, attempting connection")
+
+          try {
+            const accounts = await stacksProvider.request({
+              method: "stx_getAccounts",
+            })
+
+            if (accounts && accounts.result && accounts.result.length > 0) {
+              const transferResponse = await stacksProvider.request({
+                method: "stx_transferTokens",
+                params: {
+                  recipient: CONTRACT_ADDRESS,
+                  amount: amountInMicroStx.toString(),
+                  memo: `Payment: ${paymentIntentId}`,
+                },
+              })
+
+              if (transferResponse && transferResponse.result && transferResponse.result.txid) {
+                const txId = transferResponse.result.txid
+                setTxHash(txId)
+                setStatus("pending")
+                console.log("[v0] Generic provider transaction submitted:", txId)
+                await updatePaymentStatus(paymentIntentId, "succeeded", txId)
+                pollForConfirmation(txId)
+                return
+              }
+            }
+          } catch (providerError) {
+            console.log("[v0] Generic provider failed, falling back to deep link")
+          }
+        }
+
+        // Final fallback to deep link
         const transferUrl = `stacks:transfer?recipient=${CONTRACT_ADDRESS}&amount=${amountInMicroStx}&memo=Payment-${paymentIntentId}`
+
+        console.log("[v0] Opening wallet via deep link:", transferUrl)
 
         const newWindow = window.open(transferUrl, "_blank")
 
@@ -210,7 +258,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           }, 1000)
         } else {
           throw new Error(
-            "Unable to open wallet. Please ensure you have a Stacks wallet installed (Hiro, Leather, or Xverse).",
+            "Unable to open wallet. Please ensure you have a Stacks wallet installed (Hiro, Leather, or Xverse) and allow popups for this site.",
           )
         }
       }
