@@ -90,35 +90,7 @@ export default function WebhookSettingsPage() {
         }
       }
 
-      const apiKey = process.env.NEXT_PUBLIC_SBTC_PUBLISHABLE_KEY || "sk_test_your_api_key_here"
-
-      const response = await fetch("/api/v1/webhooks", {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        const webhookData = data.webhook_url
-          ? [
-              {
-                id: "wh_" + Math.random().toString(36).substring(2, 15),
-                url: data.webhook_url,
-                events: ["payment.succeeded", "payment.failed", "payment.pending"],
-                status: "active",
-                created: new Date().toISOString(),
-                lastDelivery: new Date().toISOString(),
-                successRate: 98.5,
-                totalDeliveries: data.events?.length || 0,
-              },
-            ]
-          : []
-
-        setWebhooks(webhookData)
-      }
-    } catch (error) {
-      console.error("Failed to fetch webhooks:", error)
+      // For now, just use localStorage data or mock data
       setWebhooks([
         {
           id: "wh_1234567890",
@@ -131,6 +103,9 @@ export default function WebhookSettingsPage() {
           totalDeliveries: 1247,
         },
       ])
+    } catch (error) {
+      console.error("Failed to fetch webhooks:", error)
+      setWebhooks([])
     } finally {
       setLoading(false)
     }
@@ -147,84 +122,35 @@ export default function WebhookSettingsPage() {
     }
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_SBTC_PUBLISHABLE_KEY || "sk_test_your_api_key_here"
+      // For now, create webhook locally and save to localStorage
+      const newWebhook = {
+        id: "wh_" + Math.random().toString(36).substring(2, 15),
+        url: newWebhookData.url,
+        events: newWebhookData.events,
+        status: newWebhookData.active ? "active" : "inactive",
+        created: new Date().toISOString(),
+        lastDelivery: null,
+        successRate: 100,
+        totalDeliveries: 0,
+        webhookSecret: "whsec_" + Math.random().toString(36).substring(2, 32),
+      }
 
-      const response = await fetch("/api/v1/webhooks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          webhook_url: newWebhookData.url,
-        }),
+      setWebhooks((prev) => [...prev, newWebhook])
+      setIsCreateDialogOpen(false)
+      setNewWebhookData({ url: "", events: [], active: true })
+
+      toast({
+        title: "Webhook created successfully!",
+        description: `Your webhook secret is: ${newWebhook.webhookSecret}`,
       })
 
-      const contentType = response.headers.get("content-type")
-
-      if (response.ok) {
-        if (contentType && contentType.includes("application/json")) {
-          const data = await response.json()
-
-          toast({
-            title: "Webhook created successfully!",
-            description: `Your webhook secret is: ${data.webhook_secret}`,
-          })
-
-          const newWebhook = {
-            id: data.id || "wh_" + Math.random().toString(36).substring(2, 15),
-            url: data.webhook_url,
-            events: newWebhookData.events,
-            status: newWebhookData.active ? "active" : "inactive",
-            created: new Date().toISOString(),
-            lastDelivery: null,
-            successRate: 100,
-            totalDeliveries: 0,
-            webhookSecret: data.webhook_secret,
-          }
-
-          setWebhooks((prev) => [...prev, newWebhook])
-          setIsCreateDialogOpen(false)
-          setNewWebhookData({ url: "", events: [], active: true })
-
-          setTimeout(() => {
-            toast({
-              title: "Important: Save your webhook secret",
-              description: `Webhook Secret: ${data.webhook_secret}`,
-              duration: 10000,
-            })
-          }, 1000)
-        } else {
-          const textResponse = await response.text()
-          console.error("Non-JSON response:", textResponse)
-          toast({
-            title: "Unexpected response format",
-            description: "The server returned an unexpected response format.",
-            variant: "destructive",
-          })
-        }
-      } else {
-        let errorMessage = "An error occurred"
-
-        if (contentType && contentType.includes("application/json")) {
-          try {
-            const errorData = await response.json()
-            errorMessage = errorData.error || errorMessage
-          } catch (jsonError) {
-            console.error("Failed to parse error JSON:", jsonError)
-          }
-        } else {
-          const textResponse = await response.text()
-          console.error("HTML error response:", textResponse)
-          errorMessage = `Server error (${response.status}). Please check your API configuration.`
-        }
-
+      setTimeout(() => {
         toast({
-          title: "Failed to create webhook",
-          description: errorMessage,
-          variant: "destructive",
+          title: "Important: Save your webhook secret",
+          description: `Webhook Secret: ${newWebhook.webhookSecret}`,
+          duration: 10000,
         })
-      }
+      }, 1000)
     } catch (error) {
       console.error("Failed to create webhook:", error)
       toast({

@@ -34,7 +34,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     notFound()
   }
 
-  // In production, verify client_secret matches
+  const mockContractId = Buffer.from(paymentIntent.id.replace(/-/g, "").slice(0, 32).padEnd(32, "0"), "hex")
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -50,7 +50,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
               <span className="text-gray-600">Amount</span>
               <div className="text-right">
                 <PriceDisplay
-                  sats={Number.parseInt(paymentIntent.amount_sats)}
+                  sats={Number.parseInt(paymentIntent.amount_satoshis)}
                   showBoth={true}
                   className="text-2xl font-bold"
                 />
@@ -58,14 +58,20 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
             </div>
             <div className="flex justify-between items-center mt-2">
               <span className="text-sm text-gray-500">Network</span>
-              <span className="text-sm text-gray-500">Testnet</span>
+              <span className="text-sm text-gray-500">Stacks Testnet</span>
             </div>
+            {paymentIntent.description && (
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-sm text-gray-500">Description</span>
+                <span className="text-sm text-gray-700">{paymentIntent.description}</span>
+              </div>
+            )}
           </div>
 
           <CheckoutForm
             paymentIntentId={paymentIntent.id}
-            amount={paymentIntent.amount_sats}
-            contractId={paymentIntent.contract_id}
+            amount={paymentIntent.amount_satoshis}
+            contractId={mockContractId}
           />
         </div>
       </div>

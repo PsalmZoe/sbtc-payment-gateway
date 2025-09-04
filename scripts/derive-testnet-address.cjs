@@ -1,4 +1,3 @@
-// File: scripts/derive-testnet-address.cjs
 const { StacksTestnet } = require('@stacks/network');
 const { getAddressFromPrivateKey, derivePrivateKey } = require('@stacks/transactions');
 

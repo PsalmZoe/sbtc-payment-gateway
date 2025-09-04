@@ -1,4 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {
   return (
@@ -15,15 +17,18 @@ export default function DashboardPage() {
               <span className="px-2 py-1 text-xs bg-muted text-muted-foreground rounded-full">Dashboard</span>
             </div>
             <nav className="flex items-center space-x-4">
-              <a href="/dashboard/payments" className="text-muted-foreground hover:text-primary">
+              <Link href="/dashboard/payments" className="text-muted-foreground hover:text-primary">
                 Payments
-              </a>
-              <a href="/dashboard/analytics" className="text-muted-foreground hover:text-primary">
+              </Link>
+              <Link href="/dashboard/analytics" className="text-muted-foreground hover:text-primary">
                 Analytics
-              </a>
-              <a href="/dashboard/settings" className="text-muted-foreground hover:text-primary">
+              </Link>
+              <Link href="/dashboard/settings" className="text-muted-foreground hover:text-primary">
                 Settings
-              </a>
+              </Link>
+              <Link href="/test-payment" className="text-muted-foreground hover:text-primary">
+                Test Suite
+              </Link>
             </nav>
           </div>
         </div>
@@ -31,6 +36,49 @@ export default function DashboardPage() {
 
       <div className="container mx-auto px-4 py-8">
         <div className="space-y-8">
+          {/* Quick Actions */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Link href="/dashboard/payments/create-link">
+              <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                <CardContent className="p-6 text-center">
+                  <div className="text-2xl mb-2">🔗</div>
+                  <h3 className="font-semibold">Create Payment Link</h3>
+                  <p className="text-sm text-muted-foreground">Generate a new payment link</p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/dashboard/payments">
+              <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                <CardContent className="p-6 text-center">
+                  <div className="text-2xl mb-2">💳</div>
+                  <h3 className="font-semibold">View Payments</h3>
+                  <p className="text-sm text-muted-foreground">See all payment history</p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/test-payment">
+              <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                <CardContent className="p-6 text-center">
+                  <div className="text-2xl mb-2">🧪</div>
+                  <h3 className="font-semibold">Test Suite</h3>
+                  <p className="text-sm text-muted-foreground">Test payment flow</p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/dashboard/settings/api-keys">
+              <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                <CardContent className="p-6 text-center">
+                  <div className="text-2xl mb-2">🔑</div>
+                  <h3 className="font-semibold">API Keys</h3>
+                  <p className="text-sm text-muted-foreground">Manage API keys</p>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+
           {/* Stats Overview */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <Card className="border">
@@ -93,6 +141,47 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Setup Instructions */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Getting Started</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="font-semibold mb-2">For Merchants</h4>
+                    <ol className="text-sm space-y-1 text-muted-foreground">
+                      <li>1. Run the test suite to verify setup</li>
+                      <li>2. Create your first payment link</li>
+                      <li>3. Share the link with customers</li>
+                      <li>4. Monitor payments in the dashboard</li>
+                    </ol>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold mb-2">For Customers</h4>
+                    <ol className="text-sm space-y-1 text-muted-foreground">
+                      <li>1. Install Leather or Xverse wallet</li>
+                      <li>2. Get testnet STX from the faucet</li>
+                      <li>3. Click the payment link</li>
+                      <li>4. Complete payment with your wallet</li>
+                    </ol>
+                  </div>
+                </div>
+
+                <div className="flex space-x-4 pt-4">
+                  <Link href="/test-payment">
+                    <Button>Run Test Suite</Button>
+                  </Link>
+                  <Link href="/dashboard/payments/create-link">
+                    <Button variant="outline">Create Payment Link</Button>
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Main Content Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

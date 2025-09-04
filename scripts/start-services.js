@@ -1,5 +1,3 @@
-// Production deployment script - run with: node scripts/start-services.js
-
 console.log("📋 sBTC Payment Gateway - Production Setup Guide")
 console.log("=".repeat(50))
 

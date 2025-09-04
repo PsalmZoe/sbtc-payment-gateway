@@ -27,6 +27,8 @@ export type PaymentIntentStatus = "requires_payment" | "processing" | "succeeded
 
 export interface CreatePaymentIntentRequest {
   amount: number | string
+  currency?: string
+  description?: string
   metadata?: Record<string, any>
 }
 

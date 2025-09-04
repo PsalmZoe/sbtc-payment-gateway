@@ -18,6 +18,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const [txHash, setTxHash] = useState<string>("")
   const [walletConnected, setWalletConnected] = useState(false)
   const [qrCodeData, setQrCodeData] = useState<string>("")
+  const [errorMessage, setErrorMessage] = useState<string>("")
 
   useEffect(() => {
     const contractAddress =
@@ -35,27 +36,32 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       if (typeof window !== "undefined") {
         // Check for Leather wallet
         if ((window as any).LeatherProvider) {
+          console.log("[v0] Leather wallet detected")
           setWalletConnected(true)
           return
         }
         // Check for Xverse wallet
         if ((window as any).XverseProviders?.StacksProvider) {
+          console.log("[v0] Xverse wallet detected")
           setWalletConnected(true)
           return
         }
         // Check for generic Stacks provider
         if ((window as any).StacksProvider) {
+          console.log("[v0] Generic Stacks provider detected")
           setWalletConnected(true)
           return
         }
       }
+      console.log("[v0] No Stacks wallet detected")
     } catch (error) {
-      console.error("Wallet check error:", error)
+      console.error("[v0] Wallet check error:", error)
     }
   }
 
   const handlePayWithWallet = async () => {
     setStatus("connecting")
+    setErrorMessage("")
 
     try {
       let stacksProvider = null
@@ -64,27 +70,31 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         // Try Leather first
         if ((window as any).LeatherProvider) {
           stacksProvider = (window as any).LeatherProvider
+          console.log("[v0] Using Leather wallet")
         }
         // Try Xverse
         else if ((window as any).XverseProviders?.StacksProvider) {
           stacksProvider = (window as any).XverseProviders.StacksProvider
+          console.log("[v0] Using Xverse wallet")
         }
         // Fallback to generic provider
         else if ((window as any).StacksProvider) {
           stacksProvider = (window as any).StacksProvider
+          console.log("[v0] Using generic Stacks provider")
         }
       }
 
       if (!stacksProvider) {
-        alert(
-          "Please install a Stacks wallet (Leather or Xverse) to continue.\n\nLeather: https://leather.io\nXverse: https://xverse.app",
-        )
+        setErrorMessage("Please install a Stacks wallet (Leather or Xverse) to continue.")
         setStatus("failed")
         return
       }
 
+      console.log("[v0] Requesting wallet connection...")
       // Request wallet connection
       const accounts = await stacksProvider.request("stx_requestAccounts", {})
+      console.log("[v0] Connected accounts:", accounts)
+
       if (!accounts || accounts.length === 0) {
         throw new Error("No accounts connected")
       }
@@ -100,20 +110,34 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         contractAddress: address,
         contractName: contractName,
         functionName: "pay-intent",
-        functionArgs: [`0x${contractId.toString("hex")}`],
-        network: "testnet", // Explicitly set testnet
+        functionArgs: [
+          {
+            type: "buff",
+            value: contractId.toString("hex"),
+          },
+          {
+            type: "principal",
+            value: "ST000000000000000000002AMW42H.sbtc-token", // Mock sBTC token for testnet
+          },
+        ],
+        network: "testnet",
+        postConditions: [],
       }
 
       console.log("[v0] Calling contract with options:", txOptions)
       const result = await stacksProvider.request("stx_contractCall", txOptions)
       console.log("[v0] Transaction result:", result)
 
-      setTxHash(result.txId)
-
-      // Poll for confirmation
-      pollForConfirmation(result.txId)
+      if (result.txId) {
+        setTxHash(result.txId)
+        // Poll for confirmation
+        pollForConfirmation(result.txId)
+      } else {
+        throw new Error("Transaction failed - no transaction ID returned")
+      }
     } catch (error) {
-      console.error("Payment error:", error)
+      console.error("[v0] Payment error:", error)
+      setErrorMessage(error instanceof Error ? error.message : "Payment failed")
       setStatus("failed")
     }
   }
@@ -140,25 +164,66 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           setStatus("confirmed")
         } else if (data.status === "failed") {
           setStatus("failed")
+          setErrorMessage("Payment verification failed")
         } else if (attempts < maxAttempts) {
           // Continue polling
           setTimeout(checkStatus, 2000)
         } else {
-          // Max attempts reached
-          console.log("[v0] Max polling attempts reached")
-          setStatus("failed")
+          // Max attempts reached - check Stacks explorer
+          console.log("[v0] Max polling attempts reached, checking transaction status...")
+          try {
+            const txResponse = await fetch(`https://stacks-node-api.testnet.stacks.co/extended/v1/tx/${txId}`)
+            if (txResponse.ok) {
+              const txData = await txResponse.json()
+              console.log("[v0] Transaction data from explorer:", txData)
+
+              if (txData.tx_status === "success") {
+                // Update payment intent status manually
+                await updatePaymentStatus(paymentIntentId, "succeeded", txId)
+                setStatus("confirmed")
+              } else {
+                setStatus("failed")
+                setErrorMessage("Transaction failed on blockchain")
+              }
+            } else {
+              setStatus("failed")
+              setErrorMessage("Unable to verify transaction status")
+            }
+          } catch (explorerError) {
+            console.error("[v0] Explorer check failed:", explorerError)
+            setStatus("failed")
+            setErrorMessage("Payment verification timeout")
+          }
         }
       } catch (error) {
-        console.error("Status check error:", error)
+        console.error("[v0] Status check error:", error)
         if (attempts < maxAttempts) {
           setTimeout(checkStatus, 5000) // Retry with longer delay
         } else {
           setStatus("failed")
+          setErrorMessage("Payment verification failed")
         }
       }
     }
 
     checkStatus()
+  }
+
+  const updatePaymentStatus = async (intentId: string, status: string, txHash: string) => {
+    try {
+      await fetch(`/api/v1/payment_intents/${intentId}/status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status,
+          tx_hash: txHash,
+        }),
+      })
+    } catch (error) {
+      console.error("[v0] Failed to update payment status:", error)
+    }
   }
 
   const getStatusIcon = () => {
@@ -184,7 +249,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       case "confirmed":
         return "Payment successful!"
       case "failed":
-        return "Payment failed. Please try again."
+        return errorMessage || "Payment failed. Please try again."
       default:
         return "Ready to pay"
     }

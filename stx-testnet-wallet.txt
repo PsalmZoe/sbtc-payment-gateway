@@ -1,0 +1,5 @@
+Stacks Testnet Wallet
+=====================
+Mnemonic   : title virtual okay buffalo club artwork above sunset sight nurse cloud task enforce label bless occur whale hungry sense nothing vivid exile cage soul
+Private Key: a80f46d75b43100691970278ae62893b3bb6052233aefcb5d819d956c493dbc901
+Address    : ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS

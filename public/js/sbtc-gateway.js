@@ -1,11 +1,3 @@
-/**
- * sBTC Gateway JavaScript SDK
- * Version: 1.0.0
- *
- * A complete payment gateway SDK for processing sBTC payments
- * Supports both auto-mounting buttons and manual integration
- */
-
 ;((window) => {
   // SDK Configuration
   const DEFAULT_BASE_URL = "https://gateway.sbtc.dev"

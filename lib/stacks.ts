@@ -1,4 +1,3 @@
-// lib/stacks.ts
 import {
   STACKS_TESTNET,
   STACKS_MAINNET,
