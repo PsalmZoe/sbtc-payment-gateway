@@ -537,13 +537,16 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
               </a>
               <span>•</span>
               <a
-                href="https://xverse.app"
+                href="https://www.xverse.app"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 underline"
               >
                 Xverse Wallet
               </a>
+            </div>
+            <div className="text-xs text-yellow-600 mt-2">
+              <p><strong>Note:</strong> Xverse requires the sats-connect library</p>
             </div>
             <Button
               onClick={refreshWallets}
