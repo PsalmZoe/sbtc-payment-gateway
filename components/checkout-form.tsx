@@ -89,8 +89,9 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         console.log("[v0] Connecting to Hiro wallet")
 
         try {
-          // Connect to wallet first
-          const accounts = await (window as any).HiroWalletProvider.request({
+          const hiroProvider = (window as any).HiroWalletProvider
+
+          const accounts = await hiroProvider.request({
             method: "stx_getAccounts",
           })
 
@@ -100,8 +101,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
           console.log("[v0] Hiro wallet connected, initiating transfer")
 
-          // Send STX transfer
-          const transferResponse = await (window as any).HiroWalletProvider.request({
+          const transferResponse = await hiroProvider.request({
             method: "stx_transferTokens",
             params: {
               recipient: CONTRACT_ADDRESS,
@@ -128,19 +128,19 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         console.log("[v0] Connecting to Leather wallet")
 
         try {
-          // Connect to Leather wallet
-          const accounts = await (window as any).LeatherProvider.request("getAddresses")
+          const leatherProvider = (window as any).LeatherProvider
 
-          if (!accounts || !accounts.result || accounts.result.addresses.length === 0) {
+          const accounts = await leatherProvider.request("getAddresses", {})
+
+          if (!accounts || !accounts.result || !accounts.result.addresses || accounts.result.addresses.length === 0) {
             throw new Error("Please connect your Leather wallet first")
           }
 
           console.log("[v0] Leather wallet connected, initiating transfer")
 
-          // Send STX transfer using Leather's API
-          const transferResponse = await (window as any).LeatherProvider.request("stx_transferTokens", {
+          const transferResponse = await leatherProvider.request("stx_transferTokens", {
             recipient: CONTRACT_ADDRESS,
-            amount: amountInMicroStx,
+            amount: amountInMicroStx.toString(),
             memo: `Payment: ${paymentIntentId}`,
           })
 
@@ -164,8 +164,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         try {
           const xverseProvider = (window as any).XverseProviders.StacksProvider
 
-          // Connect to Xverse wallet
-          const accounts = await xverseProvider.request("getAddresses")
+          const accounts = await xverseProvider.request("getAddresses", {})
 
           if (!accounts || !accounts.result || !accounts.result.addresses || accounts.result.addresses.length === 0) {
             throw new Error("Please connect your Xverse wallet first")
@@ -173,10 +172,9 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
           console.log("[v0] Xverse wallet connected, initiating transfer")
 
-          // Send STX transfer using Xverse's API
           const transferResponse = await xverseProvider.request("stx_transferTokens", {
             recipient: CONTRACT_ADDRESS,
-            amount: amountInMicroStx,
+            amount: amountInMicroStx.toString(),
             memo: `Payment: ${paymentIntentId}`,
           })
 
@@ -195,12 +193,11 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           throw xverseError
         }
       } else {
-        console.log("[v0] No wallet extension detected, trying alternative approach")
+        console.log("[v0] No specific wallet detected, trying generic approach")
 
-        // Try to detect if any Stacks provider exists
-        const stacksProvider = (window as any).StacksProvider || (window as any).btc?.request
+        const stacksProvider = (window as any).StacksProvider || (window as any).stacks
 
-        if (stacksProvider) {
+        if (stacksProvider && typeof stacksProvider.request === "function") {
           console.log("[v0] Found generic Stacks provider, attempting connection")
 
           try {
@@ -233,34 +230,22 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           }
         }
 
-        // Final fallback to deep link
         const transferUrl = `stacks:transfer?recipient=${CONTRACT_ADDRESS}&amount=${amountInMicroStx}&memo=Payment-${paymentIntentId}`
 
         console.log("[v0] Opening wallet via deep link:", transferUrl)
 
-        const newWindow = window.open(transferUrl, "_blank")
+        window.location.href = transferUrl
 
-        if (newWindow) {
-          setStatus("pending")
-          setErrorMessage("Please complete the transaction in your wallet app, then return here to check status.")
+        setStatus("pending")
+        setErrorMessage("Please complete the transaction in your wallet app, then return here to check status.")
 
-          const checkInterval = setInterval(() => {
-            if (!newWindow.closed) {
-              return
-            }
-
-            clearInterval(checkInterval)
-            setTimeout(() => {
-              setErrorMessage(
-                "If you completed the transaction, it may take a few minutes to confirm. You can refresh this page to check the status.",
-              )
-            }, 2000)
-          }, 1000)
-        } else {
-          throw new Error(
-            "Unable to open wallet. Please ensure you have a Stacks wallet installed (Hiro, Leather, or Xverse) and allow popups for this site.",
-          )
-        }
+        setTimeout(() => {
+          try {
+            window.open(transferUrl, "_blank")
+          } catch (e) {
+            console.log("[v0] Could not open in new window")
+          }
+        }, 1000)
       }
     } catch (error: any) {
       console.error("[v0] Payment error:", error)
@@ -282,6 +267,8 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         userFriendlyMessage = "No compatible wallets found. Please install Hiro, Leather, or Xverse wallet."
       } else if (error.message?.includes("network")) {
         userFriendlyMessage = "Network error. Please check your connection and try again."
+      } else if (error.message?.includes("not implemented") || error.message?.includes("request")) {
+        userFriendlyMessage = "Wallet connection failed. Please try refreshing the page or using a different wallet."
       } else if (error.message) {
         userFriendlyMessage = error.message
       }
@@ -326,7 +313,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       case "failed":
         return errorMessage || "Payment failed. Please try again."
       default:
-        return walletConnected ? "Ready to pay" : "Wallet error: No compatible wallet detected"
+        return walletConnected ? "Ready to pay" : "Connect your wallet to continue"
     }
   }
 
