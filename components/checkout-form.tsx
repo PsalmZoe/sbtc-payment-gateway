@@ -85,48 +85,68 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       console.log("[v0] Starting wallet payment process")
 
       if (typeof window !== "undefined" && (window as any).HiroWalletProvider) {
-        console.log("[v0] Using Hiro wallet with proper API")
+        console.log("[v0] Using Hiro wallet with correct API")
 
         const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
 
-        const transactionOptions = {
-          recipient: CONTRACT_ADDRESS,
-          amount: amountInMicroStx.toString(),
-          memo: `Payment: ${paymentIntentId}`,
-          network: "testnet",
-        }
-
-        console.log("[v0] Transaction options:", transactionOptions)
-
-        const result = await (window as any).HiroWalletProvider.request({
-          method: "stx_transferTokens",
-          params: transactionOptions,
+        // First connect to wallet
+        const accounts = await (window as any).HiroWalletProvider.request({
+          method: "stx_getAccounts",
         })
 
-        if (result && result.txId) {
-          setTxHash(result.txId)
-          setStatus("pending")
-          console.log("[v0] Transaction submitted:", result.txId)
-          await updatePaymentStatus(paymentIntentId, "succeeded", result.txId)
-          pollForConfirmation(result.txId)
-        } else {
-          throw new Error("Transaction failed - no transaction ID returned")
+        if (!accounts || accounts.length === 0) {
+          throw new Error("No wallet accounts found. Please unlock your wallet.")
         }
-      } else if (typeof window !== "undefined" && ((window as any).StacksProvider || (window as any).LeatherProvider)) {
-        console.log("[v0] Using fallback wallet method")
 
-        const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
+        console.log("[v0] Wallet accounts:", accounts)
 
-        const provider = (window as any).StacksProvider || (window as any).LeatherProvider
-
-        const result = await provider.request({
+        // Use correct transfer method
+        const result = await (window as any).HiroWalletProvider.request({
           method: "stx_transferTokens",
           params: {
             recipient: CONTRACT_ADDRESS,
-            amount: amountInMicroStx.toString(),
+            amount: amountInMicroStx,
             memo: `Payment: ${paymentIntentId}`,
-            network: "testnet",
           },
+        })
+
+        if (result && result.txid) {
+          setTxHash(result.txid)
+          setStatus("pending")
+          console.log("[v0] Transaction submitted:", result.txid)
+          await updatePaymentStatus(paymentIntentId, "succeeded", result.txid)
+          pollForConfirmation(result.txid)
+        } else {
+          throw new Error("Transaction failed - no transaction ID returned")
+        }
+      } else if (typeof window !== "undefined" && (window as any).LeatherProvider) {
+        console.log("[v0] Using Leather wallet")
+
+        const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
+
+        const result = await (window as any).LeatherProvider.request("stx_transferTokens", {
+          recipient: CONTRACT_ADDRESS,
+          amount: amountInMicroStx,
+          memo: `Payment: ${paymentIntentId}`,
+        })
+
+        if (result && result.txid) {
+          setTxHash(result.txid)
+          setStatus("pending")
+          await updatePaymentStatus(paymentIntentId, "succeeded", result.txid)
+          pollForConfirmation(result.txid)
+        } else {
+          throw new Error("Transaction failed - no transaction ID returned")
+        }
+      } else if (typeof window !== "undefined" && (window as any).StacksProvider) {
+        console.log("[v0] Using generic Stacks provider")
+
+        const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
+
+        const result = await (window as any).StacksProvider.transact({
+          stxAddress: CONTRACT_ADDRESS,
+          amount: amountInMicroStx,
+          memo: `Payment: ${paymentIntentId}`,
         })
 
         if (result && result.txId) {
@@ -138,18 +158,32 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           throw new Error("Transaction failed - no transaction ID returned")
         }
       } else {
-        console.log("[v0] No wallet provider found, using direct redirect")
+        console.log("[v0] No direct wallet API found, trying alternative methods")
 
+        // Try to trigger wallet through URL scheme
         const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
+        const transferUrl = `stacks:transfer?recipient=${CONTRACT_ADDRESS}&amount=${amountInMicroStx}&memo=Payment-${paymentIntentId}`
 
-        const transferUrl = `stacks:transfer?recipient=${CONTRACT_ADDRESS}&amount=${amountInMicroStx}&memo=Payment-${paymentIntentId}&network=testnet`
+        console.log("[v0] Attempting wallet redirect with URL:", transferUrl)
 
-        console.log("[v0] Opening wallet with URL:", transferUrl)
+        // Try multiple approaches
+        try {
+          // Method 1: Direct URL redirect
+          window.location.href = transferUrl
 
-        window.location.href = transferUrl
+          // Method 2: Open in new window (fallback)
+          setTimeout(() => {
+            window.open(transferUrl, "_blank")
+          }, 1000)
 
-        setStatus("pending")
-        setErrorMessage("Please complete the transaction in your wallet, then refresh this page.")
+          setStatus("pending")
+          setErrorMessage("Please complete the transaction in your wallet, then refresh this page.")
+        } catch (redirectError) {
+          console.error("[v0] Redirect failed:", redirectError)
+          throw new Error(
+            "Unable to connect to wallet. Please ensure you have Hiro or Leather wallet installed and try again.",
+          )
+        }
       }
     } catch (error: any) {
       console.error("[v0] Payment error:", error)
