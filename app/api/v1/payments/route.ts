@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     // Fetch payments for this merchant
     const result = await db.query(
       `
-      SELECT id, amount_satoshis, status, description, transaction_hash, created_at, updated_at
+      SELECT id, amount_satoshis, status, description, tx_hash, created_at, updated_at
       FROM payment_intents 
       WHERE merchant_id = $1 
       ORDER BY created_at DESC
