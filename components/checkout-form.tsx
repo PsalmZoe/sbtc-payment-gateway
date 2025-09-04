@@ -118,6 +118,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       const memo = `Payment: ${paymentIntentId}`
 
       console.log(`[Checkout] Starting payment with ${selectedWallet.name}`)
+      console.log(`[Checkout] Amount: ${amountInMicroStx} microSTX, Memo: ${memo}`)
 
       let txId: string | null = null
 
@@ -136,9 +137,9 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       }
 
       if (txId) {
+        console.log(`[Checkout] Transaction submitted successfully: ${txId}`)
         setTxHash(txId)
         setStatus("pending")
-        console.log(`[Checkout] Transaction submitted: ${txId}`)
         
         // Update payment status in backend
         await updatePaymentStatus(paymentIntentId, "pending", txId)
@@ -146,7 +147,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         // Start polling for confirmation
         pollForConfirmation(txId)
       } else {
-        throw new Error("Transaction failed or was cancelled")
+        throw new Error("Transaction failed or was cancelled - no transaction ID received")
       }
 
     } catch (error: any) {
