@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { CheckCircle, Clock, AlertCircle, Wallet, QrCode } from "lucide-react"
+import { CheckCircle, Clock, AlertCircle, Wallet, QrCode, Copy, Check } from "lucide-react"
 
 interface CheckoutFormProps {
   paymentIntentId: string
@@ -13,6 +13,8 @@ interface CheckoutFormProps {
 
 type PaymentStatus = "idle" | "connecting" | "pending" | "confirmed" | "failed"
 
+const CONTRACT_ADDRESS = "ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS"
+
 export default function CheckoutForm({ paymentIntentId, amount, contractId }: CheckoutFormProps) {
   const [status, setStatus] = useState<PaymentStatus>("idle")
   const [txHash, setTxHash] = useState<string>("")
@@ -20,9 +22,11 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const [qrCodeData, setQrCodeData] = useState<string>("")
   const [errorMessage, setErrorMessage] = useState<string>("")
   const [detectedWallet, setDetectedWallet] = useState<string>("")
+  const [availableWallets, setAvailableWallets] = useState<any[]>([])
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    const qrData = `stacks:transfer?recipient=ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM&amount=${amount}&memo=${paymentIntentId}`
+    const qrData = `stacks:transfer?recipient=${CONTRACT_ADDRESS}&amount=${amount}&memo=${paymentIntentId}`
     setQrCodeData(qrData)
   }, [amount, paymentIntentId])
 
@@ -35,156 +39,177 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         attempts++
         console.log(`[v0] Wallet detection attempt ${attempts}`)
 
-        const detected = await checkWalletConnection()
-        if (!detected && attempts < maxAttempts) {
-          setTimeout(tryDetection, 500)
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 500))
+
+          // Check for Hiro/Leather wallet
+          const hasHiro = typeof window !== "undefined" && (window as any).StacksProvider
+          const hasLeather = typeof window !== "undefined" && (window as any).LeatherProvider
+          const hasXverse = typeof window !== "undefined" && (window as any).XverseProviders?.StacksProvider
+
+          console.log(`[v0] Wallet detection - Hiro: ${!!hasHiro}, Leather: ${!!hasLeather}, Xverse: ${!!hasXverse}`)
+
+          if (hasHiro || hasLeather || hasXverse) {
+            setWalletConnected(true)
+            const walletName = hasHiro ? "Hiro" : hasLeather ? "Leather" : "Xverse"
+            setDetectedWallet(walletName)
+            console.log(`[v0] Detected wallet: ${walletName}`)
+            return
+          }
+
+          if (attempts < maxAttempts) {
+            setTimeout(tryDetection, 1000)
+          } else {
+            console.log("[v0] No wallets detected after all attempts")
+            setWalletConnected(false)
+          }
+        } catch (error) {
+          console.error(`[v0] Wallet detection error on attempt ${attempts}:`, error)
+          if (attempts < maxAttempts) {
+            setTimeout(tryDetection, 1000)
+          }
         }
       }
 
-      // Initial check
-      setTimeout(tryDetection, 100)
+      setTimeout(tryDetection, 500)
     }
 
     checkWalletWithRetry()
   }, [])
-
-  const checkWalletConnection = async (): Promise<boolean> => {
-    try {
-      if (typeof window !== "undefined") {
-        if ((window as any).HiroWalletProvider || (window as any).StacksProvider) {
-          console.log("[v0] Hiro wallet detected")
-          setWalletConnected(true)
-          setDetectedWallet("Hiro")
-          return true
-        }
-
-        if ((window as any).LeatherProvider) {
-          console.log("[v0] Leather wallet detected")
-          setWalletConnected(true)
-          setDetectedWallet("Leather")
-          return true
-        }
-
-        if ((window as any).XverseProviders?.StacksProvider) {
-          console.log("[v0] Xverse wallet detected")
-          setWalletConnected(true)
-          setDetectedWallet("Xverse")
-          return true
-        }
-
-        if ((window as any).stacks || (window as any).stacksProvider) {
-          console.log("[v0] Generic Stacks provider detected")
-          setWalletConnected(true)
-          setDetectedWallet("Stacks")
-          return true
-        }
-      }
-      console.log("[v0] No Stacks wallet detected")
-      return false
-    } catch (error) {
-      console.error("[v0] Wallet check error:", error)
-      return false
-    }
-  }
 
   const handlePayWithWallet = async () => {
     setStatus("connecting")
     setErrorMessage("")
 
     try {
-      let stacksProvider = null
-      let walletType = ""
+      console.log("[v0] Starting wallet payment process")
 
-      if (typeof window !== "undefined") {
-        // Try Hiro wallet first (most reliable)
-        if ((window as any).HiroWalletProvider) {
-          stacksProvider = (window as any).HiroWalletProvider
-          walletType = "Hiro"
-        } else if ((window as any).StacksProvider) {
-          stacksProvider = (window as any).StacksProvider
-          walletType = "Hiro"
-        }
-        // Try Leather wallet
-        else if ((window as any).LeatherProvider) {
-          stacksProvider = (window as any).LeatherProvider
-          walletType = "Leather"
-        }
-        // Try Xverse wallet
-        else if ((window as any).XverseProviders?.StacksProvider) {
-          stacksProvider = (window as any).XverseProviders.StacksProvider
-          walletType = "Xverse"
-        }
-        // Try any generic provider
-        else if ((window as any).stacks) {
-          stacksProvider = (window as any).stacks
-          walletType = "Generic"
-        }
+      let walletProvider: any = null
+
+      if ((window as any).StacksProvider) {
+        walletProvider = (window as any).StacksProvider
+        console.log("[v0] Using Hiro wallet")
+      } else if ((window as any).LeatherProvider) {
+        walletProvider = (window as any).LeatherProvider
+        console.log("[v0] Using Leather wallet")
+      } else if ((window as any).XverseProviders?.StacksProvider) {
+        walletProvider = (window as any).XverseProviders.StacksProvider
+        console.log("[v0] Using Xverse wallet")
       }
 
-      if (!stacksProvider) {
-        setErrorMessage("No Stacks wallet found. Please install Hiro, Leather, or Xverse wallet and refresh the page.")
-        setStatus("failed")
-        return
+      if (!walletProvider) {
+        throw new Error("No compatible wallet found. Please install Hiro, Leather, or Xverse wallet.")
       }
 
-      console.log(`[v0] Using ${walletType} wallet provider`)
+      // Request wallet connection
+      const authResponse = await walletProvider.request("stx_requestAccounts", undefined)
+      console.log("[v0] Wallet auth response:", authResponse)
 
-      const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000) // Convert to microSTX
+      if (!authResponse.result || !authResponse.result.addresses) {
+        throw new Error("Failed to connect to wallet")
+      }
+
+      const senderAddress = authResponse.result.addresses[0]
+      console.log("[v0] Using sender address:", senderAddress)
+
+      setStatus("pending")
+
+      const amountInSats = Math.floor(Number.parseFloat(amount) * 100000000) // Convert sBTC to satoshis
+      const amountInMicroStx = amountInSats // Use satoshis directly as microSTX for testnet
+
+      console.log("[v0] Amount conversion:", {
+        originalAmount: amount,
+        amountInSats,
+        amountInMicroStx,
+      })
 
       const transferOptions = {
-        recipient: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
+        recipient: CONTRACT_ADDRESS,
         amount: amountInMicroStx.toString(),
         memo: `Payment: ${paymentIntentId}`,
         network: "testnet",
       }
 
-      console.log("[v0] Initiating STX transfer:", transferOptions)
-      setStatus("pending")
+      console.log("[v0] Transfer options:", transferOptions)
 
-      let result
-      try {
-        if (walletType === "Leather") {
-          result = await stacksProvider.request("stx_transferTokens", transferOptions)
-        } else if (walletType === "Xverse") {
-          result = await stacksProvider.request({
-            method: "stx_transferTokens",
-            params: transferOptions,
-          })
-        } else {
-          // Hiro and generic providers
-          result = await stacksProvider.request("stx_transferTokens", transferOptions)
-        }
-      } catch (walletError: any) {
-        console.error("[v0] Wallet transaction error:", walletError)
+      const result = await walletProvider.request("stx_transferTokens", transferOptions)
+      console.log("[v0] Transaction result:", result)
 
-        if (walletError.message?.includes("User rejected") || walletError.message?.includes("cancelled")) {
-          throw new Error("Payment was cancelled by user")
-        } else if (walletError.message?.includes("Insufficient") || walletError.message?.includes("balance")) {
-          throw new Error("Insufficient STX balance. Get testnet STX from the faucet.")
-        } else if (walletError.message?.includes("not connected")) {
-          throw new Error("Wallet not connected. Please connect your wallet first.")
-        } else {
-          throw new Error(`Wallet error: ${walletError.message || "Failed to process transaction"}`)
-        }
+      if (result.error) {
+        throw new Error(result.error.message || "Transaction failed")
       }
 
-      console.log("[v0] Transfer result:", result)
-
-      if (result?.txId || result?.txid || result?.transaction_id) {
-        const transactionId = result.txId || result.txid || result.transaction_id
-        setTxHash(transactionId)
-        console.log("[v0] Transaction submitted:", transactionId)
-
-        await updatePaymentStatus(paymentIntentId, "succeeded", transactionId)
-        pollForConfirmation(transactionId)
-      } else {
-        console.error("[v0] No transaction ID in result:", result)
-        throw new Error("Transaction failed - no transaction ID returned from wallet")
+      const transactionId = result.result?.txId || result.result?.txid || result.result
+      if (!transactionId) {
+        throw new Error("No transaction ID returned from wallet")
       }
-    } catch (error) {
+
+      setTxHash(transactionId)
+      console.log("[v0] Transaction submitted successfully:", transactionId)
+
+      // Update payment status in database
+      await updatePaymentStatus(paymentIntentId, "succeeded", transactionId)
+
+      // Start polling for confirmation
+      pollForConfirmation(transactionId)
+    } catch (error: any) {
       console.error("[v0] Payment error:", error)
-      setErrorMessage(error instanceof Error ? error.message : "Payment failed - please try again")
+
+      let userFriendlyMessage = "Payment failed - please try again"
+
+      if (error.message?.includes("User rejected") || error.message?.includes("cancelled")) {
+        userFriendlyMessage = "Payment was cancelled by user"
+      } else if (error.message?.includes("Insufficient") || error.message?.includes("balance")) {
+        userFriendlyMessage = "Insufficient STX balance. Get testnet STX from the faucet."
+      } else if (error.message?.includes("No compatible wallets")) {
+        userFriendlyMessage = "No compatible wallets found. Please install Leather or Xverse wallet."
+      } else if (error.message?.includes("not connected")) {
+        userFriendlyMessage = "Wallet not connected. Please try again."
+      } else if (error.message) {
+        userFriendlyMessage = error.message
+      }
+
+      setErrorMessage(userFriendlyMessage)
       setStatus("failed")
+    }
+  }
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error("Failed to copy:", error)
+    }
+  }
+
+  const getStatusIcon = () => {
+    switch (status) {
+      case "confirmed":
+        return <CheckCircle className="w-8 h-8 text-green-500" />
+      case "pending":
+      case "connecting":
+        return <Clock className="w-8 h-8 text-blue-500 animate-spin" />
+      case "failed":
+        return <AlertCircle className="w-8 h-8 text-red-500" />
+      default:
+        return null
+    }
+  }
+
+  const getStatusMessage = () => {
+    switch (status) {
+      case "connecting":
+        return "Connecting to wallet..."
+      case "pending":
+        return "Transaction pending confirmation..."
+      case "confirmed":
+        return "Payment successful!"
+      case "failed":
+        return errorMessage || "Payment failed. Please try again."
+      default:
+        return walletConnected ? "Ready to pay" : "Wallet error: No compatible wallet detected"
     }
   }
 
@@ -208,7 +233,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
             return
           } else if (txData.tx_status === "abort_by_response" || txData.tx_status === "abort_by_post_condition") {
             setStatus("failed")
-            setErrorMessage("Transaction was rejected")
+            setErrorMessage("Transaction was rejected by the network")
             return
           }
         }
@@ -216,6 +241,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         if (attempts < maxAttempts) {
           setTimeout(checkStatus, 3000)
         } else {
+          // Assume success after max attempts (blockchain confirmation can be slow)
           setStatus("confirmed")
         }
       } catch (error) {
@@ -256,35 +282,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
   }
 
-  const getStatusIcon = () => {
-    switch (status) {
-      case "confirmed":
-        return <CheckCircle className="w-8 h-8 text-green-500" />
-      case "pending":
-      case "connecting":
-        return <Clock className="w-8 h-8 text-blue-500 animate-spin" />
-      case "failed":
-        return <AlertCircle className="w-8 h-8 text-red-500" />
-      default:
-        return null
-    }
-  }
-
-  const getStatusMessage = () => {
-    switch (status) {
-      case "connecting":
-        return "Connecting to wallet..."
-      case "pending":
-        return "Transaction pending confirmation..."
-      case "confirmed":
-        return "Payment successful!"
-      case "failed":
-        return errorMessage || "Payment failed. Please try again."
-      default:
-        return "Ready to pay"
-    }
-  }
-
   if (status === "confirmed") {
     return (
       <Card className="p-6 text-center">
@@ -312,6 +309,18 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
   return (
     <div className="space-y-4">
+      <Card className="p-4 bg-blue-50 border-blue-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-blue-600 font-medium mb-1">Contract Address:</p>
+            <code className="text-xs text-blue-800 font-mono">{CONTRACT_ADDRESS}</code>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => copyToClipboard(CONTRACT_ADDRESS)} className="ml-2">
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          </Button>
+        </div>
+      </Card>
+
       <div className="text-center py-4">
         {getStatusIcon()}
         <p className="mt-2 text-sm text-gray-600">{getStatusMessage()}</p>
@@ -327,8 +336,8 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         <Wallet className="mr-2 h-5 w-5" />
         {status === "idle" || status === "failed"
           ? walletConnected
-            ? `Pay with ${detectedWallet} Wallet`
-            : "Pay with Stacks Wallet"
+            ? `Pay with ${detectedWallet || "Wallet"}`
+            : "Pay with Generic Wallet"
           : status === "connecting"
             ? "Connecting to Wallet..."
             : "Processing Payment..."}
