@@ -83,105 +83,134 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
     try {
       console.log("[v0] Starting wallet payment process")
+      const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
 
       if (typeof window !== "undefined" && (window as any).HiroWalletProvider) {
-        console.log("[v0] Using Hiro wallet with correct API")
+        console.log("[v0] Connecting to Hiro wallet")
 
-        const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
+        try {
+          const response = await (window as any).HiroWalletProvider.request({
+            method: "stx_getAccounts",
+          })
 
-        // First connect to wallet
-        const accounts = await (window as any).HiroWalletProvider.request({
-          method: "stx_getAccounts",
-        })
+          if (!response || response.length === 0) {
+            throw new Error("Please connect your Hiro wallet first")
+          }
 
-        if (!accounts || accounts.length === 0) {
-          throw new Error("No wallet accounts found. Please unlock your wallet.")
-        }
+          console.log("[v0] Hiro wallet connected, initiating transfer")
 
-        console.log("[v0] Wallet accounts:", accounts)
+          const transferResponse = await (window as any).HiroWalletProvider.request({
+            method: "stx_transferTokens",
+            params: {
+              recipient: CONTRACT_ADDRESS,
+              amount: amountInMicroStx.toString(),
+              memo: `Payment: ${paymentIntentId}`,
+            },
+          })
 
-        // Use correct transfer method
-        const result = await (window as any).HiroWalletProvider.request({
-          method: "stx_transferTokens",
-          params: {
-            recipient: CONTRACT_ADDRESS,
-            amount: amountInMicroStx,
-            memo: `Payment: ${paymentIntentId}`,
-          },
-        })
-
-        if (result && result.txid) {
-          setTxHash(result.txid)
-          setStatus("pending")
-          console.log("[v0] Transaction submitted:", result.txid)
-          await updatePaymentStatus(paymentIntentId, "succeeded", result.txid)
-          pollForConfirmation(result.txid)
-        } else {
-          throw new Error("Transaction failed - no transaction ID returned")
+          if (transferResponse && transferResponse.txid) {
+            setTxHash(transferResponse.txid)
+            setStatus("pending")
+            console.log("[v0] Hiro transaction submitted:", transferResponse.txid)
+            await updatePaymentStatus(paymentIntentId, "succeeded", transferResponse.txid)
+            pollForConfirmation(transferResponse.txid)
+          } else {
+            throw new Error("Transaction was cancelled or failed")
+          }
+        } catch (hiroError: any) {
+          console.error("[v0] Hiro wallet error:", hiroError)
+          throw hiroError
         }
       } else if (typeof window !== "undefined" && (window as any).LeatherProvider) {
-        console.log("[v0] Using Leather wallet")
+        console.log("[v0] Connecting to Leather wallet")
 
-        const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
+        try {
+          const accounts = await (window as any).LeatherProvider.request("getAddresses")
 
-        const result = await (window as any).LeatherProvider.request("stx_transferTokens", {
-          recipient: CONTRACT_ADDRESS,
-          amount: amountInMicroStx,
-          memo: `Payment: ${paymentIntentId}`,
-        })
+          if (!accounts || accounts.length === 0) {
+            throw new Error("Please connect your Leather wallet first")
+          }
 
-        if (result && result.txid) {
-          setTxHash(result.txid)
-          setStatus("pending")
-          await updatePaymentStatus(paymentIntentId, "succeeded", result.txid)
-          pollForConfirmation(result.txid)
-        } else {
-          throw new Error("Transaction failed - no transaction ID returned")
+          console.log("[v0] Leather wallet connected, initiating transfer")
+
+          const transferResponse = await (window as any).LeatherProvider.request("stx_transferTokens", {
+            recipient: CONTRACT_ADDRESS,
+            amount: amountInMicroStx.toString(),
+            memo: `Payment: ${paymentIntentId}`,
+          })
+
+          if (transferResponse && transferResponse.txid) {
+            setTxHash(transferResponse.txid)
+            setStatus("pending")
+            console.log("[v0] Leather transaction submitted:", transferResponse.txid)
+            await updatePaymentStatus(paymentIntentId, "succeeded", transferResponse.txid)
+            pollForConfirmation(transferResponse.txid)
+          } else {
+            throw new Error("Transaction was cancelled or failed")
+          }
+        } catch (leatherError: any) {
+          console.error("[v0] Leather wallet error:", leatherError)
+          throw leatherError
         }
-      } else if (typeof window !== "undefined" && (window as any).StacksProvider) {
-        console.log("[v0] Using generic Stacks provider")
+      } else if (typeof window !== "undefined" && (window as any).XverseProviders?.StacksProvider) {
+        console.log("[v0] Connecting to Xverse wallet")
 
-        const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
+        try {
+          const xverseProvider = (window as any).XverseProviders.StacksProvider
 
-        const result = await (window as any).StacksProvider.transact({
-          stxAddress: CONTRACT_ADDRESS,
-          amount: amountInMicroStx,
-          memo: `Payment: ${paymentIntentId}`,
-        })
+          const response = await xverseProvider.request("getAddresses")
 
-        if (result && result.txId) {
-          setTxHash(result.txId)
-          setStatus("pending")
-          await updatePaymentStatus(paymentIntentId, "succeeded", result.txId)
-          pollForConfirmation(result.txId)
-        } else {
-          throw new Error("Transaction failed - no transaction ID returned")
+          if (!response || !response.addresses || response.addresses.length === 0) {
+            throw new Error("Please connect your Xverse wallet first")
+          }
+
+          console.log("[v0] Xverse wallet connected, initiating transfer")
+
+          const transferResponse = await xverseProvider.request("stx_transferTokens", {
+            recipient: CONTRACT_ADDRESS,
+            amount: amountInMicroStx.toString(),
+            memo: `Payment: ${paymentIntentId}`,
+          })
+
+          if (transferResponse && transferResponse.txid) {
+            setTxHash(transferResponse.txid)
+            setStatus("pending")
+            console.log("[v0] Xverse transaction submitted:", transferResponse.txid)
+            await updatePaymentStatus(paymentIntentId, "succeeded", transferResponse.txid)
+            pollForConfirmation(transferResponse.txid)
+          } else {
+            throw new Error("Transaction was cancelled or failed")
+          }
+        } catch (xverseError: any) {
+          console.error("[v0] Xverse wallet error:", xverseError)
+          throw xverseError
         }
       } else {
-        console.log("[v0] No direct wallet API found, trying alternative methods")
+        console.log("[v0] No wallet API detected, using deep link approach")
 
-        // Try to trigger wallet through URL scheme
-        const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
         const transferUrl = `stacks:transfer?recipient=${CONTRACT_ADDRESS}&amount=${amountInMicroStx}&memo=Payment-${paymentIntentId}`
 
-        console.log("[v0] Attempting wallet redirect with URL:", transferUrl)
+        const newWindow = window.open(transferUrl, "_blank")
 
-        // Try multiple approaches
-        try {
-          // Method 1: Direct URL redirect
-          window.location.href = transferUrl
-
-          // Method 2: Open in new window (fallback)
-          setTimeout(() => {
-            window.open(transferUrl, "_blank")
-          }, 1000)
-
+        if (newWindow) {
           setStatus("pending")
-          setErrorMessage("Please complete the transaction in your wallet, then refresh this page.")
-        } catch (redirectError) {
-          console.error("[v0] Redirect failed:", redirectError)
+          setErrorMessage("Please complete the transaction in your wallet app, then return here to check status.")
+
+          const checkInterval = setInterval(() => {
+            if (!newWindow.closed) {
+              return
+            }
+
+            clearInterval(checkInterval)
+            setTimeout(() => {
+              setErrorMessage(
+                "If you completed the transaction, it may take a few minutes to confirm. You can refresh this page to check the status.",
+              )
+            }, 2000)
+          }, 1000)
+        } else {
           throw new Error(
-            "Unable to connect to wallet. Please ensure you have Hiro or Leather wallet installed and try again.",
+            "Unable to open wallet. Please ensure you have a Stacks wallet installed (Hiro, Leather, or Xverse).",
           )
         }
       }
@@ -193,15 +222,16 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       if (
         error.message?.includes("User rejected") ||
         error.message?.includes("cancelled") ||
-        error.message?.includes("denied")
+        error.message?.includes("denied") ||
+        error.message?.includes("Transaction was cancelled")
       ) {
         userFriendlyMessage = "Payment was cancelled by user"
       } else if (error.message?.includes("Insufficient") || error.message?.includes("balance")) {
         userFriendlyMessage = "Insufficient STX balance. Get testnet STX from the faucet."
-      } else if (error.message?.includes("No compatible wallets") || error.message?.includes("not found")) {
-        userFriendlyMessage = "No compatible wallets found. Please install Hiro or Leather wallet."
-      } else if (error.message?.includes("not connected") || error.message?.includes("connection")) {
-        userFriendlyMessage = "Wallet not connected. Please try again."
+      } else if (error.message?.includes("connect") || error.message?.includes("Please connect")) {
+        userFriendlyMessage = error.message
+      } else if (error.message?.includes("not found") || error.message?.includes("No compatible wallets")) {
+        userFriendlyMessage = "No compatible wallets found. Please install Hiro, Leather, or Xverse wallet."
       } else if (error.message?.includes("network")) {
         userFriendlyMessage = "Network error. Please check your connection and try again."
       } else if (error.message) {
@@ -375,7 +405,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         {status === "idle" || status === "failed"
           ? walletConnected
             ? `Pay with ${detectedWallet || "Wallet"}`
-            : "Pay with Generic Wallet"
+            : "Pay with Wallet"
           : status === "connecting"
             ? "Connecting to Wallet..."
             : "Processing Payment..."}
