@@ -13,7 +13,7 @@ import { Code, ExternalLink, Copy, RefreshCw, CheckCircle, Terminal } from "luci
 import { useToast } from "@/hooks/use-toast"
 
 const contractInfo = {
-  address: "ST3Z0KDG3VXZIGZVAZECBWXRVTDYHFFAG4FZMXCSD.payment_gateway",
+  address: "ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS.payment_gateway",
   network: "testnet",
   status: "deployed" as "ready-to-deploy" | "deployed" | "deploying" | "failed",
   version: "1.0.0",
@@ -98,7 +98,7 @@ export default function SmartContractPage() {
         toast({
           title: "Deployment successful!",
           description:
-            "Smart contract deployed to testnet. Contract address: ST3Z0KDG3VXZIGZVAZECBWXRVTDYHFFAG4FZMXCSD.payment_gateway",
+            "Smart contract deployed to testnet. Contract address: ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS.payment_gateway",
         })
         // Update contract info
         contractInfo.status = "deployed"
@@ -439,7 +439,7 @@ export default function SmartContractPage() {
                   12 functions for payment processing, merchant management, and administrative operations.
                 </p>
                 <div className="mt-2 text-xs text-green-600 font-mono">
-                  Address: ST3Z0KDG3VXZIGZVAZECBWXRVTDYHFFAG4FZMXCSD.payment_gateway
+                  Address: ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS.payment_gateway
                 </div>
               </div>
             </div>

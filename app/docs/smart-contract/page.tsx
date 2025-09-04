@@ -77,9 +77,18 @@ export default function SmartContractPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-muted p-4 rounded-lg">
                   <h4 className="font-semibold mb-2">Contract Address</h4>
-                  <code className="text-sm bg-background p-2 rounded block">
-                    SP2J6ZY48GV1EZ5V2V5RB9MP66SW86PYKKNRV9EJ7.payment-gateway
-                  </code>
+                  <div className="flex items-center space-x-2">
+                    <code className="text-sm bg-background p-2 rounded block flex-1">
+                      ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS.payment-gateway
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard("ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS.payment-gateway")}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="bg-muted p-4 rounded-lg">
                   <h4 className="font-semibold mb-2">Language</h4>
@@ -256,7 +265,7 @@ import { StacksTestnet } from '@stacks/network'
 
 async function createPaymentIntent(amount, merchantAddress) {
   const txOptions = {
-    contractAddress: 'SP2J6ZY48GV1EZ5V2V5RB9MP66SW86PYKKNRV9EJ7',
+    contractAddress: 'ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS',
     contractName: 'payment-gateway',
     functionName: 'register-intent',
     functionArgs: [
@@ -281,7 +290,7 @@ import { StacksTestnet } from '@stacks/network'
 
 async function createPaymentIntent(amount, merchantAddress) {
   const txOptions = {
-    contractAddress: 'SP2J6ZY48GV1EZ5V2V5RB9MP66SW86PYKKNRV9EJ7',
+    contractAddress: 'ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS',
     contractName: 'payment-gateway',
     functionName: 'register-intent',
     functionArgs: [
