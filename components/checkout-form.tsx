@@ -84,74 +84,69 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     try {
       console.log("[v0] Starting wallet payment process")
 
-      let walletProvider: any = null
+      if (typeof window !== "undefined" && (window as any).StacksProvider) {
+        console.log("[v0] Using Hiro wallet with proper API")
 
-      if ((window as any).StacksProvider) {
-        walletProvider = (window as any).StacksProvider
-        console.log("[v0] Using Hiro wallet")
-      } else if ((window as any).LeatherProvider) {
-        walletProvider = (window as any).LeatherProvider
+        const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000) // Convert to microSTX
+
+        // Use the proper Hiro wallet API
+        const transactionOptions = {
+          recipient: CONTRACT_ADDRESS,
+          amount: amountInMicroStx,
+          memo: `Payment: ${paymentIntentId}`,
+          network: "testnet",
+        }
+
+        console.log("[v0] Transaction options:", transactionOptions)
+
+        // Trigger Hiro wallet popup using the correct method
+        const result = await (window as any).StacksProvider.request("stx_transferTokens", transactionOptions)
+
+        if (result && result.txId) {
+          setTxHash(result.txId)
+          setStatus("pending")
+          console.log("[v0] Transaction submitted:", result.txId)
+
+          await updatePaymentStatus(paymentIntentId, "succeeded", result.txId)
+          pollForConfirmation(result.txId)
+        } else {
+          throw new Error("Transaction failed - no transaction ID returned")
+        }
+      } else if (typeof window !== "undefined" && (window as any).LeatherProvider) {
         console.log("[v0] Using Leather wallet")
-      } else if ((window as any).XverseProviders?.StacksProvider) {
-        walletProvider = (window as any).XverseProviders.StacksProvider
-        console.log("[v0] Using Xverse wallet")
+
+        const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
+
+        const result = await (window as any).LeatherProvider.request("stx_transferTokens", {
+          recipient: CONTRACT_ADDRESS,
+          amount: amountInMicroStx,
+          memo: `Payment: ${paymentIntentId}`,
+          network: "testnet",
+        })
+
+        if (result && result.txId) {
+          setTxHash(result.txId)
+          setStatus("pending")
+          await updatePaymentStatus(paymentIntentId, "succeeded", result.txId)
+          pollForConfirmation(result.txId)
+        }
+      } else {
+        console.log("[v0] No direct wallet API, using redirect method")
+
+        const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
+
+        // Create a Stacks transfer URL that will open the wallet
+        const transferUrl = `stacks:transfer?recipient=${CONTRACT_ADDRESS}&amount=${amountInMicroStx}&memo=Payment:${paymentIntentId}&network=testnet`
+
+        console.log("[v0] Opening wallet with URL:", transferUrl)
+
+        // Try to open the wallet directly
+        window.location.href = transferUrl
+
+        // Set status to pending since we can't track the transaction directly
+        setStatus("pending")
+        setErrorMessage("Please complete the transaction in your wallet, then refresh this page.")
       }
-
-      if (!walletProvider) {
-        throw new Error("No compatible wallet found. Please install Hiro, Leather, or Xverse wallet.")
-      }
-
-      // Request wallet connection
-      const authResponse = await walletProvider.request("stx_requestAccounts", undefined)
-      console.log("[v0] Wallet auth response:", authResponse)
-
-      if (!authResponse.result || !authResponse.result.addresses) {
-        throw new Error("Failed to connect to wallet")
-      }
-
-      const senderAddress = authResponse.result.addresses[0]
-      console.log("[v0] Using sender address:", senderAddress)
-
-      setStatus("pending")
-
-      const amountInSats = Math.floor(Number.parseFloat(amount) * 100000000) // Convert sBTC to satoshis
-      const amountInMicroStx = amountInSats // Use satoshis directly as microSTX for testnet
-
-      console.log("[v0] Amount conversion:", {
-        originalAmount: amount,
-        amountInSats,
-        amountInMicroStx,
-      })
-
-      const transferOptions = {
-        recipient: CONTRACT_ADDRESS,
-        amount: amountInMicroStx.toString(),
-        memo: `Payment: ${paymentIntentId}`,
-        network: "testnet",
-      }
-
-      console.log("[v0] Transfer options:", transferOptions)
-
-      const result = await walletProvider.request("stx_transferTokens", transferOptions)
-      console.log("[v0] Transaction result:", result)
-
-      if (result.error) {
-        throw new Error(result.error.message || "Transaction failed")
-      }
-
-      const transactionId = result.result?.txId || result.result?.txid || result.result
-      if (!transactionId) {
-        throw new Error("No transaction ID returned from wallet")
-      }
-
-      setTxHash(transactionId)
-      console.log("[v0] Transaction submitted successfully:", transactionId)
-
-      // Update payment status in database
-      await updatePaymentStatus(paymentIntentId, "succeeded", transactionId)
-
-      // Start polling for confirmation
-      pollForConfirmation(transactionId)
     } catch (error: any) {
       console.error("[v0] Payment error:", error)
 
@@ -162,7 +157,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       } else if (error.message?.includes("Insufficient") || error.message?.includes("balance")) {
         userFriendlyMessage = "Insufficient STX balance. Get testnet STX from the faucet."
       } else if (error.message?.includes("No compatible wallets")) {
-        userFriendlyMessage = "No compatible wallets found. Please install Leather or Xverse wallet."
+        userFriendlyMessage = "No compatible wallets found. Please install Hiro or Leather wallet."
       } else if (error.message?.includes("not connected")) {
         userFriendlyMessage = "Wallet not connected. Please try again."
       } else if (error.message) {
