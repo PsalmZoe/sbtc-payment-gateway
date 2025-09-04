@@ -91,15 +91,19 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         try {
           const hiroProvider = (window as any).HiroWalletProvider
 
-          const accounts = await hiroProvider.request({
-            method: "stx_getAccounts",
+          // Connect to wallet first
+          const connectResponse = await hiroProvider.request({
+            method: "stx_requestAccounts",
           })
 
-          if (!accounts || !accounts.result || accounts.result.length === 0) {
+          console.log("[v0] Hiro connect response:", connectResponse)
+
+          if (!connectResponse || !connectResponse.result || connectResponse.result.length === 0) {
             throw new Error("Please connect your Hiro wallet first")
           }
 
-          console.log("[v0] Hiro wallet connected, initiating transfer")
+          const senderAddress = connectResponse.result[0]
+          console.log("[v0] Hiro wallet connected, sender:", senderAddress)
 
           const transferResponse = await hiroProvider.request({
             method: "stx_transferTokens",
@@ -107,8 +111,11 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
               recipient: CONTRACT_ADDRESS,
               amount: amountInMicroStx.toString(),
               memo: `Payment: ${paymentIntentId}`,
+              network: "testnet",
             },
           })
+
+          console.log("[v0] Hiro transfer response:", transferResponse)
 
           if (transferResponse && transferResponse.result && transferResponse.result.txid) {
             const txId = transferResponse.result.txid
@@ -130,19 +137,30 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         try {
           const leatherProvider = (window as any).LeatherProvider
 
-          const accounts = await leatherProvider.request("getAddresses", {})
+          // Connect to Leather wallet
+          const connectResponse = await leatherProvider.request("getAddresses", {})
+          console.log("[v0] Leather connect response:", connectResponse)
 
-          if (!accounts || !accounts.result || !accounts.result.addresses || accounts.result.addresses.length === 0) {
+          if (
+            !connectResponse ||
+            !connectResponse.result ||
+            !connectResponse.result.addresses ||
+            connectResponse.result.addresses.length === 0
+          ) {
             throw new Error("Please connect your Leather wallet first")
           }
 
-          console.log("[v0] Leather wallet connected, initiating transfer")
+          const senderAddress = connectResponse.result.addresses[0].address
+          console.log("[v0] Leather wallet connected, sender:", senderAddress)
 
           const transferResponse = await leatherProvider.request("stx_transferTokens", {
             recipient: CONTRACT_ADDRESS,
             amount: amountInMicroStx.toString(),
             memo: `Payment: ${paymentIntentId}`,
+            network: "testnet",
           })
+
+          console.log("[v0] Leather transfer response:", transferResponse)
 
           if (transferResponse && transferResponse.result && transferResponse.result.txid) {
             const txId = transferResponse.result.txid
@@ -164,19 +182,30 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         try {
           const xverseProvider = (window as any).XverseProviders.StacksProvider
 
-          const accounts = await xverseProvider.request("getAddresses", {})
+          // Connect to Xverse wallet
+          const connectResponse = await xverseProvider.request("getAddresses", {})
+          console.log("[v0] Xverse connect response:", connectResponse)
 
-          if (!accounts || !accounts.result || !accounts.result.addresses || accounts.result.addresses.length === 0) {
+          if (
+            !connectResponse ||
+            !connectResponse.result ||
+            !connectResponse.result.addresses ||
+            connectResponse.result.addresses.length === 0
+          ) {
             throw new Error("Please connect your Xverse wallet first")
           }
 
-          console.log("[v0] Xverse wallet connected, initiating transfer")
+          const senderAddress = connectResponse.result.addresses[0].address
+          console.log("[v0] Xverse wallet connected, sender:", senderAddress)
 
           const transferResponse = await xverseProvider.request("stx_transferTokens", {
             recipient: CONTRACT_ADDRESS,
             amount: amountInMicroStx.toString(),
             memo: `Payment: ${paymentIntentId}`,
+            network: "testnet",
           })
+
+          console.log("[v0] Xverse transfer response:", transferResponse)
 
           if (transferResponse && transferResponse.result && transferResponse.result.txid) {
             const txId = transferResponse.result.txid
@@ -193,8 +222,9 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           throw xverseError
         }
       } else {
-        console.log("[v0] No specific wallet detected, trying generic approach")
+        console.log("[v0] No specific wallet detected, trying fallback approaches")
 
+        // Try to detect any Stacks provider
         const stacksProvider = (window as any).StacksProvider || (window as any).stacks
 
         if (stacksProvider && typeof stacksProvider.request === "function") {
@@ -202,7 +232,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
           try {
             const accounts = await stacksProvider.request({
-              method: "stx_getAccounts",
+              method: "stx_requestAccounts",
             })
 
             if (accounts && accounts.result && accounts.result.length > 0) {
@@ -212,6 +242,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
                   recipient: CONTRACT_ADDRESS,
                   amount: amountInMicroStx.toString(),
                   memo: `Payment: ${paymentIntentId}`,
+                  network: "testnet",
                 },
               })
 
@@ -226,16 +257,15 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
               }
             }
           } catch (providerError) {
-            console.log("[v0] Generic provider failed, falling back to deep link")
+            console.log("[v0] Generic provider failed:", providerError)
           }
         }
 
+        // Final fallback to deep link
         const transferUrl = `stacks:transfer?recipient=${CONTRACT_ADDRESS}&amount=${amountInMicroStx}&memo=Payment-${paymentIntentId}`
-
         console.log("[v0] Opening wallet via deep link:", transferUrl)
 
         window.location.href = transferUrl
-
         setStatus("pending")
         setErrorMessage("Please complete the transaction in your wallet app, then return here to check status.")
 
@@ -268,9 +298,11 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       } else if (error.message?.includes("network")) {
         userFriendlyMessage = "Network error. Please check your connection and try again."
       } else if (error.message?.includes("not implemented") || error.message?.includes("request")) {
-        userFriendlyMessage = "Wallet connection failed. Please try refreshing the page or using a different wallet."
+        userFriendlyMessage = "Wallet API error. Please try refreshing the page or using a different wallet."
+      } else if (error.code === 4001) {
+        userFriendlyMessage = "Transaction was rejected by user"
       } else if (error.message) {
-        userFriendlyMessage = error.message
+        userFriendlyMessage = `Error: ${error.message}`
       }
 
       setErrorMessage(userFriendlyMessage)
