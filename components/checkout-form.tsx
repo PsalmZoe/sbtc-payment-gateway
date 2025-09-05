@@ -454,7 +454,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       <div className="text-center py-4">
         {getStatusIcon()}
         <p className="mt-2 text-sm text-gray-600">{getStatusMessage()}</p>
-        <p className="text-xs text-orange-600 mt-1">Stacks Testnet • Amount: {amount} STX</p>
+        <p className="text-xs text-orange-600 mt-1">sBTC Testnet • Amount: {amount} sBTC</p>
       </div>
 
       {/* Wallet Selection */}
