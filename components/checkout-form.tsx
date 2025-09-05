@@ -580,7 +580,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       {/* Testnet Faucet Link */}
       <Card className="p-3 bg-blue-50 border-blue-200">
         <p className="text-xs text-blue-700 text-center">
-          Need testnet STX?{" "}
+          Need testnet sBTC?{" "}
           <a
             href="https://explorer.stacks.co/sandbox/faucet?chain=testnet"
             target="_blank"
