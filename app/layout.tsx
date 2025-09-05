@@ -40,17 +40,11 @@ export default function RootLayout({
     <html lang="en" className={`${montserrat.variable} ${jetbrainsMono.variable}`}>
       <body className="font-montserrat antialiased">
         {/* Load sats-connect for Xverse wallet support */}
-        <Script
+        <Script 
           src="https://unpkg.com/sats-connect@2.4.2/dist/index.js"
           strategy="beforeInteractive"
-          onLoad={() => {
-            console.log("[Layout] sats-connect loaded successfully")
-          }}
-          onError={(e) => {
-            console.error("[Layout] Failed to load sats-connect:", e)
-          }}
         />
-
+        
         {children}
       </body>
     </html>
