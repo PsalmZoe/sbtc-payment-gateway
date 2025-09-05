@@ -115,11 +115,11 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     setPollAttempts(0)
 
     try {
-      const amountInMicroStx = Math.floor(Number.parseFloat(amount))
+      const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
       const memo = `Payment: ${paymentIntentId}`
 
       console.log(`[Checkout] Starting payment with ${selectedWallet.name}`)
-      console.log(`[Checkout] Amount: ${amountInMicroStx} microSTX, Memo: ${memo}`)
+      console.log(`[Checkout] Amount: ${amount} microSTX, Memo: ${memo}`)
 
       let txId: string | null = null
 
