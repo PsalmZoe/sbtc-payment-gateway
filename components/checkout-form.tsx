@@ -66,9 +66,10 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       })
     }
 
-    // ✅ FIXED: Check for Xverse Wallet using the correct method
-    if ((window as any).XverseProviders?.StacksProvider || (window as any).StacksProvider) {
-      const xverseProvider = (window as any).XverseProviders?.StacksProvider || (window as any).StacksProvider
+    // ✅ CORRECTED: Check for Xverse Wallet using sats-connect
+    if ((window as any).satsConnect || (window as any).XverseProviders?.StacksProvider) {
+      // Xverse can be accessed via sats-connect global or legacy provider
+      const xverseProvider = (window as any).satsConnect || (window as any).XverseProviders?.StacksProvider
       wallets.push({
         name: "Xverse",
         provider: xverseProvider,
@@ -205,53 +206,62 @@ const handlePayWithWallet = async () => {
     return transferResponse.result.txid
   }
 
-  // ✅ FIXED: Xverse wallet payment using correct API
+  // ✅ CORRECTED: Xverse wallet payment using sats-connect API
   const handleXversePayment = async (provider: any, amount: number, memo: string): Promise<string> => {
     try {
-      // Xverse uses different method names
-      const getAddressesOptions = {
-        purposes: ['ordinals', 'payment', 'stacks'] as const,
-        message: 'Please connect your Xverse wallet to continue with payment',
-      }
-
-      const addressResponse = await provider.getAddresses(getAddressesOptions)
+      // Xverse uses the sats-connect library with request method
+      // Check if sats-connect is available globally or use the provider's request method
+      let request;
       
-      if (!addressResponse?.result?.addresses?.length) {
-        throw new Error("Please connect your Xverse wallet first")
+      if (typeof window !== 'undefined' && (window as any).satsConnect) {
+        request = (window as any).satsConnect.request;
+      } else if (provider && typeof provider.request === 'function') {
+        request = provider.request.bind(provider);
+      } else {
+        throw new Error("Xverse wallet API not available. Please make sure sats-connect is loaded or Xverse is installed.");
       }
 
-      const stacksAddress = addressResponse.result.addresses.find((addr: any) => addr.type === 'stacks')
+      // First, connect to get wallet addresses
+      const connectResponse = await request('wallet_connect', {
+        purposes: ['stacks'],
+        message: 'Connect to continue with STX payment'
+      });
+
+      if (connectResponse.status !== 'success' || !connectResponse.result?.addresses?.length) {
+        throw new Error("Failed to connect to Xverse wallet");
+      }
+
+      const stacksAddress = connectResponse.result.addresses.find((addr: any) => addr.purpose === 'stacks');
       if (!stacksAddress) {
-        throw new Error("No Stacks address found in Xverse wallet")
+        throw new Error("No Stacks address found in Xverse wallet");
       }
 
-      // Xverse STX transfer parameters
-      const transferOptions = {
-        recipients: [
-          {
-            address: CONTRACT_ADDRESS,
-            amount: amount.toString()
-          }
-        ],
+      // Now make the STX transfer
+      const transferResponse = await request('stx_transferStx', {
+        recipient: CONTRACT_ADDRESS,
+        amount: amount, // sats-connect expects amount in microSTX
         memo: memo,
-        network: NETWORK
+      });
+
+      if (transferResponse.status !== 'success' || !transferResponse.result?.txid) {
+        throw new Error("Transaction was cancelled or failed");
       }
 
-      const transferResponse = await provider.sendTransfer(transferOptions)
-
-      if (!transferResponse?.txId && !transferResponse?.result?.txid) {
-        throw new Error("Transaction was cancelled or failed")
-      }
-
-      // Xverse might return txId directly or in result
-      return transferResponse.txId || transferResponse.result.txid
+      return transferResponse.result.txid;
 
     } catch (error: any) {
-      // Handle specific Xverse errors
-      if (error.error?.message) {
-        throw new Error(error.error.message)
+      console.error('[Xverse Payment Error]:', error);
+      
+      // Handle specific Xverse/sats-connect errors
+      if (error.message?.includes('User rejected') || error.message?.includes('cancelled')) {
+        throw new Error("Payment was cancelled by user");
       }
-      throw error
+      
+      if (error.message?.includes('connect')) {
+        throw new Error("Failed to connect to Xverse wallet. Please unlock and try again.");
+      }
+      
+      throw new Error(error.message || "Xverse payment failed");
     }
   }
 
