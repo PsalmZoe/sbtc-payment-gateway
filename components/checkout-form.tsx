@@ -466,6 +466,10 @@ const handlePayWithWallet = async () => {
     )
   }
 
+  function generateQRCodeSVG(qrCodeData: string, arg1: number): string | undefined {
+    throw new Error("Function not implemented.")
+  }
+
   return (
     <div className="space-y-4">
       {/* Contract Address Display */}
@@ -598,18 +602,42 @@ const handlePayWithWallet = async () => {
         </Card>
       )}
 
-      {/* QR Code Section */}
+      {/* QR Code Section - Now with actual QR code */}
       <Card className="p-4 bg-gray-50">
         <p className="text-sm text-gray-600 text-center mb-2">Or scan with mobile wallet:</p>
-        <div className="w-32 h-32 bg-white border-2 border-dashed border-gray-300 mx-auto flex items-center justify-center rounded-lg">
-          <div className="text-center">
-            <QrCode className="h-8 w-8 mx-auto text-gray-400 mb-1" />
-            <span className="text-xs text-gray-400">QR Code</span>
-          </div>
+        <div className="w-40 h-40 bg-white border-2 border-gray-200 mx-auto flex items-center justify-center rounded-lg overflow-hidden">
+          {qrCodeData ? (
+            <img 
+              src={generateQRCodeSVG(qrCodeData, 160)} 
+              alt="Payment QR Code"
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                // Fallback to text display if QR service fails
+                (e.target as HTMLImageElement).style.display = 'none';
+                const fallback = document.createElement('div');
+                fallback.innerHTML = '<div class="text-center"><div class="h-8 w-8 mx-auto text-gray-400 mb-1">📱</div><span class="text-xs text-gray-400">QR Code</span></div>';
+                (e.target as HTMLImageElement).parentNode?.appendChild(fallback);
+              }}
+            />
+          ) : (
+            <div className="text-center">
+              <QrCode className="h-8 w-8 mx-auto text-gray-400 mb-1" />
+              <span className="text-xs text-gray-400">QR Code</span>
+            </div>
+          )}
         </div>
         <details className="mt-2">
           <summary className="text-xs text-gray-500 cursor-pointer">Show QR Data</summary>
           <p className="text-xs text-gray-400 mt-1 break-all font-mono">{qrCodeData}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => copyToClipboard(qrCodeData)}
+            className="mt-2 w-full"
+          >
+            {copied ? <Check className="h-3 w-3 mr-1" /> : <Copy className="h-3 w-3 mr-1" />}
+            Copy QR Data
+          </Button>
         </details>
       </Card>
 
