@@ -50,7 +50,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
               <span className="text-gray-600">Amount</span>
               <div className="text-right">
                 <PriceDisplay
-                  sats={Number.parseInt(paymentIntent.amount_satoshis)}
+                  sbtc={Number.parseInt(paymentIntent.amount_sbtc)}
                   showBoth={true}
                   className="text-2xl font-bold"
                 />
@@ -58,7 +58,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
             </div>
             <div className="flex justify-between items-center mt-2">
               <span className="text-sm text-gray-500">Network</span>
-              <span className="text-sm text-gray-500">Stacks Testnet</span>
+              <span className="text-sm text-gray-500">sBTC Testnet</span>
             </div>
             {paymentIntent.description && (
               <div className="flex justify-between items-center mt-2">
