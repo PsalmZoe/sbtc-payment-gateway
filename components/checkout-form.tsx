@@ -25,7 +25,7 @@ const POLL_INTERVAL = 3000
 const MAX_POLL_ATTEMPTS = 30
 
 // QR Code generation function using QR Server API
-const generateQRCodeSVG = (data: string, size: number = 160): string => {
+const generateQRCodeSVG = (data: string, size = 160): string => {
   const encodedData = encodeURIComponent(data)
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodedData}&format=png&margin=10`
 }
@@ -52,13 +52,13 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     if (typeof window === "undefined") return
 
     const wallets: WalletProvider[] = []
-    
+
     // Check for Hiro Wallet
     if ((window as any).HiroWalletProvider) {
       wallets.push({
         name: "Hiro",
         provider: (window as any).HiroWalletProvider,
-        detected: true
+        detected: true,
       })
     }
 
@@ -67,65 +67,49 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       wallets.push({
         name: "Leather",
         provider: (window as any).LeatherProvider,
-        detected: true
+        detected: true,
       })
     }
 
-    // Check for Xverse Wallet - improved detection
-    if (typeof window !== 'undefined') {
-      // Check for sats-connect (new Xverse integration)
-      if ((window as any).satsConnect) {
+    if (typeof window !== "undefined") {
+      // Wait for sats-connect to be fully loaded
+      let satsConnectAvailable = false
+      let xverseProviderAvailable = false
+
+      // Check for sats-connect (preferred method)
+      if ((window as any).satsConnect && typeof (window as any).satsConnect.request === "function") {
+        satsConnectAvailable = true
         wallets.push({
           name: "Xverse",
           provider: (window as any).satsConnect,
-          detected: true
+          detected: true,
         })
       }
-      // Fallback: Check for legacy Xverse provider
+      // Check for legacy Xverse provider only if sats-connect is not available
       else if ((window as any).XverseProviders?.StacksProvider) {
-        wallets.push({
-          name: "Xverse",
-          provider: (window as any).XverseProviders.StacksProvider,
-          detected: true
-        })
+        const stacksProvider = (window as any).XverseProviders.StacksProvider
+        if (stacksProvider && typeof stacksProvider.request === "function") {
+          xverseProviderAvailable = true
+          wallets.push({
+            name: "Xverse",
+            provider: stacksProvider,
+            detected: true,
+          })
+        }
       }
-      // Check if Xverse is installed but not yet loaded
-      else if ((window as any).XverseProviders) {
-        wallets.push({
-          name: "Xverse",
-          provider: (window as any).XverseProviders,
-          detected: true
-        })
-      }
+
+      console.log(
+        `[Wallet Detection] Xverse - satsConnect: ${satsConnectAvailable}, legacy: ${xverseProviderAvailable}`,
+      )
     }
 
     setAvailableWallets(wallets)
-    
+
     // Auto-select first available wallet
     if (wallets.length > 0 && !selectedWallet) {
       setSelectedWallet(wallets[0])
     }
   }, [selectedWallet])
-
-  // Initial wallet detection with retry
-  useEffect(() => {
-    let attempts = 0
-    const maxAttempts = 5
-
-    const tryDetection = () => {
-      attempts++
-      console.log(`[Checkout] Wallet detection attempt ${attempts}`)
-      
-      detectWallets()
-      
-      if (availableWallets.length === 0 && attempts < maxAttempts) {
-        setTimeout(tryDetection, 1000)
-      }
-    }
-
-    // Initial detection
-    tryDetection()
-  }, [detectWallets, availableWallets.length])
 
   // Handle payment with selected wallet
   const handlePayWithWallet = async () => {
@@ -171,7 +155,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       } else {
         throw new Error("Transaction failed or was cancelled - no transaction ID received")
       }
-
     } catch (error: any) {
       console.error("[Checkout] Payment error:", error)
       setErrorMessage(getErrorMessage(error))
@@ -228,103 +211,165 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     return transferResponse.result.txid
   }
 
-  // Fixed Xverse wallet payment
   const handleXversePayment = async (provider: any, amount: number, memo: string): Promise<string> => {
     try {
-      console.log('[Xverse] Starting payment process...')
-      
-      // Check if we have sats-connect available
-      if (typeof window !== 'undefined' && (window as any).satsConnect) {
+      console.log("[Xverse] Starting payment process...")
+      console.log("[Xverse] Provider type:", typeof provider, "Has request:", typeof provider?.request)
+
+      // Check if we have sats-connect available (preferred method)
+      if (
+        typeof window !== "undefined" &&
+        (window as any).satsConnect &&
+        typeof (window as any).satsConnect.request === "function"
+      ) {
+        console.log("[Xverse] Using sats-connect method")
         return await handleXverseWithSatsConnect((window as any).satsConnect, amount, memo)
       }
-      
-      // Fallback to legacy Xverse provider
-      if (provider && typeof provider.request === 'function') {
+
+      // Fallback to legacy Xverse provider - validate it has request function
+      if (provider && typeof provider.request === "function") {
+        console.log("[Xverse] Using legacy provider method")
         return await handleXverseLegacy(provider, amount, memo)
       }
-      
-      // Try to connect via window.XverseProviders if available
-      if (typeof window !== 'undefined' && (window as any).XverseProviders?.StacksProvider) {
-        return await handleXverseLegacy((window as any).XverseProviders.StacksProvider, amount, memo)
+
+      // Try to get StacksProvider directly from XverseProviders
+      if (typeof window !== "undefined" && (window as any).XverseProviders?.StacksProvider) {
+        const stacksProvider = (window as any).XverseProviders.StacksProvider
+        if (stacksProvider && typeof stacksProvider.request === "function") {
+          console.log("[Xverse] Using XverseProviders.StacksProvider")
+          return await handleXverseLegacy(stacksProvider, amount, memo)
+        }
       }
-      
-      throw new Error("Xverse wallet not found. Please make sure Xverse is installed and unlocked.")
-      
+
+      throw new Error(
+        "Xverse wallet provider does not have a valid request function. Please make sure Xverse is properly installed and unlocked.",
+      )
     } catch (error: any) {
-      console.error('[Xverse Payment Error]:', error)
+      console.error("[Xverse Payment Error]:", error)
+
+      // Provide more specific error messages
+      if (error.message?.includes("request") && error.message?.includes("not implemented")) {
+        throw new Error("Xverse wallet API not properly loaded. Please refresh the page and try again.")
+      }
+
       throw error
     }
   }
 
-  // Xverse with sats-connect
   const handleXverseWithSatsConnect = async (satsConnect: any, amount: number, memo: string): Promise<string> => {
     try {
+      console.log("[Xverse] Using sats-connect API")
+
+      // Validate sats-connect has required methods
+      if (typeof satsConnect.request !== "function") {
+        throw new Error("sats-connect request function is not available")
+      }
+
       // First, request wallet connection
-      const connectResponse = await satsConnect.request('wallet_connect', {
-        purposes: ['stacks'],
-        message: 'Connect to complete your STX payment'
+      console.log("[Xverse] Requesting wallet connection...")
+      const connectResponse = await satsConnect.request("wallet_connect", {
+        purposes: ["stacks"],
+        message: "Connect to complete your STX payment",
       })
 
-      if (connectResponse.status !== 'success' || !connectResponse.result?.addresses?.length) {
+      console.log("[Xverse] Connect response:", connectResponse)
+
+      if (connectResponse.status !== "success" || !connectResponse.result?.addresses?.length) {
         throw new Error("Failed to connect to Xverse wallet")
       }
 
-      const stacksAddress = connectResponse.result.addresses.find((addr: any) => addr.purpose === 'stacks')
+      const stacksAddress = connectResponse.result.addresses.find((addr: any) => addr.purpose === "stacks")
       if (!stacksAddress) {
         throw new Error("No Stacks address found in Xverse wallet")
       }
 
-      console.log('[Xverse] Connected successfully, making transfer...')
+      console.log("[Xverse] Connected successfully, making transfer...")
 
       // Make STX transfer
-      const transferResponse = await satsConnect.request('stx_transferStx', {
+      const transferResponse = await satsConnect.request("stx_transferStx", {
         recipient: CONTRACT_ADDRESS,
         amount: amount.toString(),
         memo: memo,
       })
 
-      if (transferResponse.status !== 'success' || !transferResponse.result?.txid) {
+      console.log("[Xverse] Transfer response:", transferResponse)
+
+      if (transferResponse.status !== "success" || !transferResponse.result?.txid) {
         throw new Error("Transaction was cancelled or failed")
       }
 
       return transferResponse.result.txid
-
     } catch (error: any) {
-      if (error.message?.includes('User rejected') || error.message?.includes('cancelled')) {
+      console.error("[Xverse sats-connect error]:", error)
+
+      if (error.message?.includes("User rejected") || error.message?.includes("cancelled")) {
         throw new Error("Payment was cancelled by user")
       }
+
+      if (
+        error.message?.includes("request") &&
+        (error.message?.includes("not implemented") || error.message?.includes("not a function"))
+      ) {
+        throw new Error("Xverse sats-connect API not properly initialized. Please refresh the page.")
+      }
+
       throw error
     }
   }
 
-  // Legacy Xverse provider
   const handleXverseLegacy = async (provider: any, amount: number, memo: string): Promise<string> => {
     try {
+      console.log("[Xverse] Using legacy provider API")
+
+      // Validate provider has request function
+      if (!provider || typeof provider.request !== "function") {
+        throw new Error("Xverse provider request function is not available")
+      }
+
+      console.log("[Xverse] Getting addresses...")
+
       // Try to get accounts first
-      const accounts = await provider.request('getAddresses', {})
-      
+      const accounts = await provider.request("getAddresses", {})
+
+      console.log("[Xverse] Accounts response:", accounts)
+
       if (!accounts?.result?.addresses?.length) {
         throw new Error("Please connect your Xverse wallet first")
       }
 
+      console.log("[Xverse] Making transfer...")
+
       // Make transfer
-      const transferResponse = await provider.request('stx_transferTokens', {
+      const transferResponse = await provider.request("stx_transferTokens", {
         recipient: CONTRACT_ADDRESS,
         amount: amount.toString(),
         memo,
         network: NETWORK,
       })
 
+      console.log("[Xverse] Transfer response:", transferResponse)
+
       if (!transferResponse?.result?.txid) {
         throw new Error("Transaction was cancelled or failed")
       }
 
       return transferResponse.result.txid
-
     } catch (error: any) {
-      if (error.message?.includes('User rejected') || error.message?.includes('cancelled')) {
+      console.error("[Xverse legacy error]:", error)
+
+      if (error.message?.includes("User rejected") || error.message?.includes("cancelled")) {
         throw new Error("Payment was cancelled by user")
       }
+
+      if (
+        error.message?.includes("request") &&
+        (error.message?.includes("not implemented") || error.message?.includes("not a function"))
+      ) {
+        throw new Error(
+          "Xverse wallet API not properly loaded. Please make sure Xverse extension is enabled and refresh the page.",
+        )
+      }
+
       throw error
     }
   }
@@ -333,16 +378,13 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const pollForConfirmation = async (txId: string) => {
     const checkStatus = async () => {
       try {
-        setPollAttempts(prev => prev + 1)
+        setPollAttempts((prev) => prev + 1)
         console.log(`[Checkout] Checking transaction status, attempt: ${pollAttempts + 1}`)
 
-        const response = await fetch(
-          `https://stacks-node-api.testnet.stacks.co/extended/v1/tx/${txId}`,
-          { 
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
-          }
-        )
+        const response = await fetch(`https://stacks-node-api.testnet.stacks.co/extended/v1/tx/${txId}`, {
+          method: "GET",
+          headers: { Accept: "application/json" },
+        })
 
         if (response.ok) {
           const txData = await response.json()
@@ -375,10 +417,9 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           setStatus("confirmed")
           await updatePaymentStatus(paymentIntentId, "succeeded", txId)
         }
-
       } catch (error) {
         console.error("[Checkout] Status check error:", error)
-        
+
         if (pollAttempts < MAX_POLL_ATTEMPTS) {
           setTimeout(checkStatus, POLL_INTERVAL * 2) // Longer interval on error
         } else {
@@ -396,7 +437,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const updatePaymentStatus = async (intentId: string, status: string, txHash: string) => {
     try {
       console.log("[Checkout] Updating payment status:", { intentId, status, txHash })
-      
+
       const response = await fetch(`/api/v1/payment_intents/${intentId}/status`, {
         method: "POST",
         headers: {
@@ -427,19 +468,19 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     ) {
       return "Payment was cancelled"
     }
-    
+
     if (error.message?.includes("Insufficient") || error.message?.includes("balance")) {
       return "Insufficient STX balance. Get testnet STX from the faucet."
     }
-    
+
     if (error.message?.includes("connect")) {
       return error.message
     }
-    
+
     if (error.message?.includes("not found") || error.message?.includes("No compatible wallets")) {
       return "No compatible wallets found. Please install a Stacks wallet."
     }
-    
+
     if (error.message?.includes("network")) {
       return "Network error. Please check your connection and try again."
     }
@@ -477,7 +518,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const getStatusIcon = () => {
     switch (status) {
       case "confirmed":
-        return <CheckCircle className="w-8 h-8 text-green-500" />
+        return <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
       case "pending":
       case "connecting":
         return <Clock className="w-8 h-8 text-blue-500 animate-spin" />
@@ -502,6 +543,25 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         return availableWallets.length > 0 ? "Ready to pay" : "No wallets detected"
     }
   }
+
+  // Initial wallet detection with retry
+  useEffect(() => {
+    let attempts = 0
+    const maxAttempts = 10 // Increased attempts to wait for sats-connect to load
+
+    const tryDetection = () => {
+      attempts++
+      console.log(`[Checkout] Wallet detection attempt ${attempts}`)
+
+      detectWallets()
+
+      if (availableWallets.length === 0 && attempts < maxAttempts) {
+        setTimeout(tryDetection, attempts < 3 ? 500 : 1500)
+      }
+    }
+
+    setTimeout(tryDetection, 100)
+  }, [detectWallets, availableWallets.length])
 
   // Render success state
   if (status === "confirmed") {
@@ -598,12 +658,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
         {/* Retry button for failed payments */}
         {status === "failed" && (
-          <Button
-            onClick={retryPayment}
-            variant="outline"
-            className="w-full"
-            size="sm"
-          >
+          <Button onClick={retryPayment} variant="outline" className="w-full bg-transparent" size="sm">
             <RefreshCw className="mr-2 h-4 w-4" />
             Try Again
           </Button>
@@ -615,9 +670,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         <Card className="p-4 bg-yellow-50 border-yellow-200">
           <div className="text-center space-y-2">
             <p className="text-sm text-yellow-800">No Stacks wallets detected</p>
-            <p className="text-xs text-yellow-700">
-              Please install a wallet extension and refresh this page
-            </p>
+            <p className="text-xs text-yellow-700">Please install a wallet extension and refresh this page</p>
             <div className="flex justify-center space-x-2 text-xs">
               <a
                 href="https://wallet.hiro.so"
@@ -647,14 +700,11 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
               </a>
             </div>
             <div className="text-xs text-yellow-600 mt-2">
-              <p><strong>Note:</strong> Make sure wallets are unlocked and connected</p>
+              <p>
+                <strong>Note:</strong> Make sure wallets are unlocked and connected
+              </p>
             </div>
-            <Button
-              onClick={refreshWallets}
-              variant="outline"
-              size="sm"
-              className="mt-2"
-            >
+            <Button onClick={refreshWallets} variant="outline" size="sm" className="mt-2 bg-transparent">
               <RefreshCw className="mr-2 h-4 w-4" />
               Refresh
             </Button>
@@ -667,20 +717,21 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         <p className="text-sm text-gray-600 text-center mb-2">Or scan with mobile wallet:</p>
         <div className="w-40 h-40 bg-white border-2 border-gray-200 mx-auto flex items-center justify-center rounded-lg overflow-hidden">
           {qrCodeData ? (
-            <img 
-              src={generateQRCodeSVG(qrCodeData, 160)} 
+            <img
+              src={generateQRCodeSVG(qrCodeData, 160) || "/placeholder.svg"}
               alt="Payment QR Code"
               className="w-full h-full object-contain"
               onError={(e) => {
                 // Fallback to text display if QR service fails
-                console.error('QR Code failed to load');
-                (e.target as HTMLImageElement).style.display = 'none';
-                const parent = (e.target as HTMLImageElement).parentNode as HTMLElement;
-                if (parent && !parent.querySelector('.qr-fallback')) {
-                  const fallback = document.createElement('div');
-                  fallback.className = 'qr-fallback text-center';
-                  fallback.innerHTML = '<div class="h-8 w-8 mx-auto text-gray-400 mb-1">📱</div><span class="text-xs text-gray-400">QR Code</span>';
-                  parent.appendChild(fallback);
+                console.error("QR Code failed to load")
+                ;(e.target as HTMLImageElement).style.display = "none"
+                const parent = (e.target as HTMLImageElement).parentNode as HTMLElement
+                if (parent && !parent.querySelector(".qr-fallback")) {
+                  const fallback = document.createElement("div")
+                  fallback.className = "qr-fallback text-center"
+                  fallback.innerHTML =
+                    '<div class="h-8 w-8 mx-auto text-gray-400 mb-1">📱</div><span class="text-xs text-gray-400">QR Code</span>'
+                  parent.appendChild(fallback)
                 }
               }}
             />
@@ -694,12 +745,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         <details className="mt-2">
           <summary className="text-xs text-gray-500 cursor-pointer">Show QR Data</summary>
           <p className="text-xs text-gray-400 mt-1 break-all font-mono">{qrCodeData}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => copyToClipboard(qrCodeData)}
-            className="mt-2 w-full"
-          >
+          <Button variant="outline" size="sm" onClick={() => copyToClipboard(qrCodeData)} className="mt-2 w-full">
             {copied ? <Check className="h-3 w-3 mr-1" /> : <Copy className="h-3 w-3 mr-1" />}
             Copy QR Data
           </Button>
