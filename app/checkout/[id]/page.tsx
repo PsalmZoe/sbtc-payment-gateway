@@ -50,7 +50,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
               <span className="text-gray-600">Amount</span>
               <div className="text-right">
                 <PriceDisplay
-                  sbtc={Number.parseInt(paymentIntent.amount_sbtc)}
+                  sats={Number.parseInt(paymentIntent.amount_satoshis)}
                   showBoth={true}
                   className="text-2xl font-bold"
                 />
