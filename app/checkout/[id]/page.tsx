@@ -70,7 +70,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
 
           <CheckoutForm
             paymentIntentId={paymentIntent.id}
-            amount={(Number(paymentIntent.amount_satoshis) / 100_000_000).toFixed(6)}
+            amount={(Number(paymentIntent.amount_satoshis) / 100_000_000).toFixed(8)}
             contractId={mockContractId}
           />
         </div>
