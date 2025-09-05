@@ -103,60 +103,58 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     tryDetection()
   }, [detectWallets, availableWallets.length])
 
-  // Handle payment with selected wallet
-  const handlePayWithWallet = async () => {
-    if (!selectedWallet) {
-      setErrorMessage("Please select a wallet first")
-      return
-    }
-
-    setStatus("connecting")
-    setErrorMessage("")
-    setPollAttempts(0)
-
-    try {
-      const amountInMicroStx = Math.floor(Number.parseFloat(amount))
-      const memo = `Payment: ${paymentIntentId}`
-
-      console.log(`[Checkout] Starting payment with ${selectedWallet.name}`)
-      console.log(`[Checkout] Amount: ${amount} STX, Memo: ${memo}`)
-
-      let txId: string | null = null
-
-      switch (selectedWallet.name) {
-        case "Hiro":
-          txId = await handleHiroPayment(selectedWallet.provider, amountInMicroStx, memo)
-          break
-        case "Leather":
-          txId = await handleLeatherPayment(selectedWallet.provider, amountInMicroStx, memo)
-          break
-        case "Xverse":
-          txId = await handleXversePayment(selectedWallet.provider, amountInMicroStx, memo)
-          break
-        default:
-          throw new Error(`Unsupported wallet: ${selectedWallet.name}`)
-      }
-
-      if (txId) {
-        console.log(`[Checkout] Transaction submitted successfully: ${txId}`)
-        setTxHash(txId)
-        setStatus("pending")
-        
-        // Update payment status in backend
-        await updatePaymentStatus(paymentIntentId, "pending", txId)
-        
-        // Start polling for confirmation
-        pollForConfirmation(txId)
-      } else {
-        throw new Error("Transaction failed or was cancelled - no transaction ID received")
-      }
-
-    } catch (error: any) {
-      console.error("[Checkout] Payment error:", error)
-      setErrorMessage(getErrorMessage(error))
-      setStatus("failed")
-    }
+  // ✅ CORRECTED: Handle payment with selected wallet
+const handlePayWithWallet = async () => {
+  if (!selectedWallet) {
+    setErrorMessage("Please select a wallet first")
+    return
   }
+
+  setStatus("connecting")
+  setErrorMessage("")
+  setPollAttempts(0)
+
+  try {
+    // ✅ Convert sBTC (STX format) to microSTX
+    const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1_000_000)
+    const memo = `Payment: ${paymentIntentId}`
+
+    console.log(`[Checkout] Starting payment with ${selectedWallet.name}`)
+    console.log(`[Checkout] Amount: ${amount} sBTC, Memo: ${memo}`)
+
+    let txId: string | null = null
+
+    switch (selectedWallet.name) {
+      case "Hiro":
+        txId = await handleHiroPayment(selectedWallet.provider, amountInMicroStx, memo)
+        break
+      case "Leather":
+        txId = await handleLeatherPayment(selectedWallet.provider, amountInMicroStx, memo)
+        break
+      case "Xverse":
+        txId = await handleXversePayment(selectedWallet.provider, amountInMicroStx, memo)
+        break
+      default:
+        throw new Error(`Unsupported wallet: ${selectedWallet.name}`)
+    }
+
+    if (txId) {
+      console.log(`[Checkout] Transaction submitted successfully: ${txId}`)
+      setTxHash(txId)
+      setStatus("pending")
+      await updatePaymentStatus(paymentIntentId, "pending", txId)
+      pollForConfirmation(txId)
+    } else {
+      throw new Error("Transaction failed or was cancelled - no transaction ID received")
+    }
+
+  } catch (error: any) {
+    console.error("[Checkout] Payment error:", error)
+    setErrorMessage(getErrorMessage(error))
+    setStatus("failed")
+  }
+}
+
 
   // Hiro wallet payment
   const handleHiroPayment = async (provider: any, amount: number, memo: string): Promise<string> => {
