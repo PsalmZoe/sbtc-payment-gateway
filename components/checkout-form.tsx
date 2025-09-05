@@ -11,6 +11,7 @@ interface CheckoutFormProps {
   contractId: Buffer
 }
 
+// Fixed: Added "confirmed" to the PaymentStatus type
 type PaymentStatus = "idle" | "connecting" | "pending" | "confirmed" | "failed"
 
 type WalletProvider = {
@@ -453,7 +454,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       <div className="text-center py-4">
         {getStatusIcon()}
         <p className="mt-2 text-sm text-gray-600">{getStatusMessage()}</p>
-        <p className="text-xs text-orange-600 mt-1">sBTC Testnet • Amount: {amount} sBTC</p>
+        <p className="text-xs text-orange-600 mt-1">Stacks Testnet • Amount: {amount} STX</p>
       </div>
 
       {/* Wallet Selection */}
@@ -593,9 +594,18 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       </Card>
 
       {/* Error Message */}
-      {errorMessage && (
+      {errorMessage && status === "failed" && (
         <Card className="p-3 bg-red-50 border-red-200">
-          <p className="text-xs text-red-700 text-center">{errorMessage}</p>
+          <div className="flex items-center space-x-2 text-red-700">
+            <AlertCircle className="w-4 h-4" />
+            <span className="text-sm font-medium">Payment Failed</span>
+          </div>
+          <p className="text-xs text-red-600 mt-1">{errorMessage}</p>
+          {txHash && (
+            <p className="text-xs text-red-500 mt-1">
+              Check transaction: {txHash.slice(0, 16)}...{txHash.slice(-8)}
+            </p>
+          )}
         </Card>
       )}
     </div>
