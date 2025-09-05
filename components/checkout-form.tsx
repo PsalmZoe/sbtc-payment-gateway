@@ -37,7 +37,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
   // Generate QR code data
   useEffect(() => {
-    const amountInMicroStx = Math.floor(Number.parseFloat(amount))
+    const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
     const qrData = `stacks:transfer?recipient=${CONTRACT_ADDRESS}&amount=${amountInMicroStx}&memo=${paymentIntentId}`
     setQrCodeData(qrData)
   }, [amount, paymentIntentId])
@@ -115,7 +115,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     setPollAttempts(0)
 
     try {
-      const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
+      const amountInMicroStx = Math.floor(Number.parseFloat(amount))
       const memo = `Payment: ${paymentIntentId}`
 
       console.log(`[Checkout] Starting payment with ${selectedWallet.name}`)
