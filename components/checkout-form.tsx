@@ -66,11 +66,12 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       })
     }
 
-    // Check for Xverse Wallet
-    if ((window as any).XverseProviders?.StacksProvider) {
+    // ✅ FIXED: Check for Xverse Wallet using the correct method
+    if ((window as any).XverseProviders?.StacksProvider || (window as any).StacksProvider) {
+      const xverseProvider = (window as any).XverseProviders?.StacksProvider || (window as any).StacksProvider
       wallets.push({
         name: "Xverse",
-        provider: (window as any).XverseProviders.StacksProvider,
+        provider: xverseProvider,
         detected: true
       })
     }
@@ -155,7 +156,6 @@ const handlePayWithWallet = async () => {
   }
 }
 
-
   // Hiro wallet payment
   const handleHiroPayment = async (provider: any, amount: number, memo: string): Promise<string> => {
     const connectResponse = await provider.request({
@@ -205,26 +205,54 @@ const handlePayWithWallet = async () => {
     return transferResponse.result.txid
   }
 
-  // Xverse wallet payment
+  // ✅ FIXED: Xverse wallet payment using correct API
   const handleXversePayment = async (provider: any, amount: number, memo: string): Promise<string> => {
-    const connectResponse = await provider.request("getAddresses", {})
+    try {
+      // Xverse uses different method names
+      const getAddressesOptions = {
+        purposes: ['ordinals', 'payment', 'stacks'] as const,
+        message: 'Please connect your Xverse wallet to continue with payment',
+      }
 
-    if (!connectResponse?.result?.addresses?.length) {
-      throw new Error("Please connect your Xverse wallet first")
+      const addressResponse = await provider.getAddresses(getAddressesOptions)
+      
+      if (!addressResponse?.result?.addresses?.length) {
+        throw new Error("Please connect your Xverse wallet first")
+      }
+
+      const stacksAddress = addressResponse.result.addresses.find((addr: any) => addr.type === 'stacks')
+      if (!stacksAddress) {
+        throw new Error("No Stacks address found in Xverse wallet")
+      }
+
+      // Xverse STX transfer parameters
+      const transferOptions = {
+        recipients: [
+          {
+            address: CONTRACT_ADDRESS,
+            amount: amount.toString()
+          }
+        ],
+        memo: memo,
+        network: NETWORK
+      }
+
+      const transferResponse = await provider.sendTransfer(transferOptions)
+
+      if (!transferResponse?.txId && !transferResponse?.result?.txid) {
+        throw new Error("Transaction was cancelled or failed")
+      }
+
+      // Xverse might return txId directly or in result
+      return transferResponse.txId || transferResponse.result.txid
+
+    } catch (error: any) {
+      // Handle specific Xverse errors
+      if (error.error?.message) {
+        throw new Error(error.error.message)
+      }
+      throw error
     }
-
-    const transferResponse = await provider.request("stx_transferTokens", {
-      recipient: CONTRACT_ADDRESS,
-      amount: amount.toString(),
-      memo,
-      network: NETWORK,
-    })
-
-    if (!transferResponse?.result?.txid) {
-      throw new Error("Transaction was cancelled or failed")
-    }
-
-    return transferResponse.result.txid
   }
 
   // Poll for transaction confirmation
@@ -545,7 +573,7 @@ const handlePayWithWallet = async () => {
               </a>
             </div>
             <div className="text-xs text-yellow-600 mt-2">
-              <p><strong>Note:</strong> Xverse requires the sats-connect library</p>
+              <p><strong>Note:</strong> Make sure wallets are unlocked and connected</p>
             </div>
             <Button
               onClick={refreshWallets}
