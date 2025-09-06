@@ -214,7 +214,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       throw new Error("Please connect your Leather wallet first")
     }
 
-    const transferResponse = await provider.request("stx_transferTokens", {
+    const transferResponse = await provider.request("sbtc_transferTokens", {
       recipient: CONTRACT_ADDRESS,
       amount: amount.toString(),
       memo,
@@ -277,7 +277,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       console.log('[Xverse] Connected successfully, making transfer...')
 
       // Make STX transfer
-      const transferResponse = await satsConnect.request('stx_transferStx', {
+      const transferResponse = await satsConnect.request('sBTC_transfersBTC', {
         recipient: CONTRACT_ADDRESS,
         amount: amount.toString(),
         memo: memo,
@@ -429,7 +429,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
     
     if (error.message?.includes("Insufficient") || error.message?.includes("balance")) {
-      return "Insufficient STX balance. Get testnet STX from the faucet."
+      return "Insufficient sBTC balance? Get testnet sBTC."
     }
     
     if (error.message?.includes("connect")) {

@@ -164,7 +164,7 @@ export default function DashboardPage() {
                     <h4 className="font-semibold mb-2">For Customers</h4>
                     <ol className="text-sm space-y-1 text-muted-foreground">
                       <li>1. Install Leather or Xverse wallet</li>
-                      <li>2. Get testnet STX from the faucet</li>
+                      <li>2. Get testnet sBTC</li>
                       <li>3. Click the payment link</li>
                       <li>4. Complete payment with your wallet</li>
                     </ol>

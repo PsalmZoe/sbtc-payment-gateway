@@ -65,7 +65,7 @@ Run these SQL scripts in order (they'll run automatically when you deploy):
 1. Copy the generated payment link
 2. Open it in a new tab/incognito window
 3. Install Leather or Xverse wallet if not already installed
-4. Get testnet STX from: https://explorer.stacks.co/sandbox/faucet?chain=testnet
+4. Get testnet sBTC from: https://docs.hiro.so/en/tools/clarinet/sbtc-integration#manual-sbtc-minting-in-unit-tests
 5. Connect wallet and complete payment
 
 ### Step 3: Verify Payment History
@@ -85,13 +85,13 @@ sk_test_51234567890abcdef
 ### Leather Wallet
 1. Install: https://leather.io
 2. Create testnet wallet
-3. Get testnet STX from faucet
+3. Get testnet sBTC from faucet
 4. Connect to your payment page
 
 ### Xverse Wallet
 1. Install: https://xverse.app
 2. Switch to testnet mode
-3. Get testnet STX from faucet
+3. Get testnet sBTC from faucet
 4. Connect to your payment page
 
 ## 🚨 Troubleshooting

@@ -287,9 +287,9 @@ export default function TestPaymentPage() {
                 <ul className="text-sm text-muted-foreground space-y-1 ml-4">
                   <li>• Install Leather or Xverse wallet</li>
                   <li>
-                    • Get testnet STX from{" "}
+                    • Get testnet sBTC from{" "}
                     <a
-                      href="https://explorer.stacks.co/sandbox/faucet?chain=testnet"
+                      href="https://docs.hiro.so/en/tools/clarinet/sbtc-integration#manual-sbtc-minting-in-unit-tests"
                       className="text-blue-500 underline"
                     >
                       Stacks Faucet

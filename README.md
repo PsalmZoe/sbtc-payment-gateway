@@ -84,7 +84,7 @@ curl -X POST http://localhost:3000/api/v1/payment_intents \
 ### For Customers
 - **Leather Wallet**: https://leather.io
 - **Xverse Wallet**: https://xverse.app
-- **Testnet STX**: Get free tokens from [Stacks Faucet](https://explorer.stacks.co/sandbox/faucet?chain=testnet)
+- **Testnet sBTC**: Get free tokens from [Stacks Faucet](https://docs.hiro.so/en/tools/clarinet/sbtc-integration#manual-sbtc-minting-in-unit-tests)
 
 ### For Merchants
 - Database (PostgreSQL)
