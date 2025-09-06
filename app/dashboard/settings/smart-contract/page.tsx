@@ -19,42 +19,143 @@ const contractInfo = {
   version: "1.0.0",
   deployedAt: "2025-01-03T05:09:03Z" as string | null,
   lastUpdated: "2025-01-03T05:09:03Z",
-  txHash: "0x60f1caef4d05acd05f036a77f0c200923c5eba6a86d0e8bd6cff5259f985" as string | null,
+  txHash: "0x735f79fa00fbd860c4cdc2786f7e25e93881b8fb514c81a291deeeb2ba014f01" as string | null,
   blockHeight: 358866 as number | null,
 }
 
 const contractABI = `
-;; sBTC Payment Gateway Smart Contract (Testnet Deployment Ready)
-;; Version: 1.0.0
-;; Description: A secure payment gateway for processing sBTC payments with intent-based architecture
+;; sBTC Payment Gateway - Original Contract
+;; Simplified for successful deployment
 
-;; Constants & Error Codes
-(define-constant CONTRACT-NAME "sBTC Payment Gateway")
-(define-constant CONTRACT-VERSION u100) ;; v1.0.0
+;; Error constants
+(define-constant ERR_UNAUTHORIZED (err u100))
+(define-constant ERR_INVALID_AMOUNT (err u101))
+(define-constant ERR_PAYMENT_NOT_FOUND (err u102))
+(define-constant ERR_ALREADY_PROCESSED (err u103))
+(define-constant ERR_INSUFFICIENT_BALANCE (err u104))
+(define-constant ERR_INVALID_REFERENCE (err u105))
 
-;; Error codes
-(define-constant ERR-NO-INTENT u100)
-(define-constant ERR-ALREADY-PAID u101)
-(define-constant ERR-AMOUNT-MISMATCH u102)
-(define-constant ERR-NOT-AUTHORIZED u103)
-(define-constant ERR-INVALID-AMOUNT u104)
-(define-constant ERR-INVALID-ID u105)
-(define-constant ERR-INVALID-PRINCIPAL u106)
-(define-constant ERR-CONTRACT-NOT-SET u107)
-(define-constant ERR-INTENT-EXISTS u108)
-(define-constant ERR-TRANSFER-FAILED u109)
-(define-constant ERR-INSUFFICIENT-BALANCE u110)
+;; Contract owner
+(define-constant CONTRACT_OWNER tx-sender)
 
-;; Business logic constants
-(define-constant MAX-AMOUNT u1000000000000) ;; Max 1 trillion sBTC units
-(define-constant MIN-AMOUNT u1) ;; Minimum 1 unit
+;; Data variables
+(define-data-var payment-counter uint u0)
+(define-data-var total-volume uint u0)
 
-;; Core Functions
-(define-public (register-intent (id (buff 32)) (merchant principal) (amount uint)))
-(define-public (pay-intent (id (buff 32)) (sbtc-token <sip-010-trait>)))
-(define-public (set-sbtc-contract (contract principal)))
-(define-read-only (get-intent (id (buff 32))))
-(define-read-only (get-contract-stats))
+;; Payment structure
+(define-map payments
+  uint
+  {
+    merchant: principal,
+    customer: principal,
+    amount: uint,
+    status: (string-ascii 20),
+    timestamp: uint,
+    reference: (string-ascii 50)
+  }
+)
+
+;; Merchant balances
+(define-map merchant-balances principal uint)
+
+;; Merchant registration
+(define-map registered-merchants principal bool)
+
+;; Events
+(define-data-var last-payment-id uint u0)
+
+;; Public functions
+
+;; Register as merchant
+(define-public (register-merchant)
+  (begin
+    (map-set registered-merchants tx-sender true)
+    (map-set merchant-balances tx-sender u0)
+    (ok true)
+  )
+)
+
+;; Process payment
+(define-public (process-payment (merchant principal) (amount uint) (reference (string-ascii 50)))
+  (let
+    (
+      (payment-id (+ (var-get payment-counter) u1))
+      (current-time block-height)
+    )
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (default-to false (map-get? registered-merchants merchant)) ERR_UNAUTHORIZED)
+    (asserts! (> (len reference) u0) ERR_INVALID_REFERENCE)
+    
+    ;; Store payment record
+    (map-set payments payment-id {
+      merchant: merchant,
+      customer: tx-sender,
+      amount: amount,
+      status: "completed",
+      timestamp: current-time,
+      reference: reference
+    })
+    
+    ;; Update merchant balance
+    (let ((current-balance (default-to u0 (map-get? merchant-balances merchant))))
+      (map-set merchant-balances merchant (+ current-balance amount))
+    )
+    
+    ;; Update counters
+    (var-set payment-counter payment-id)
+    (var-set total-volume (+ (var-get total-volume) amount))
+    (var-set last-payment-id payment-id)
+    
+    (ok payment-id)
+  )
+)
+
+;; Withdraw merchant balance
+(define-public (withdraw-balance (amount uint))
+  (let
+    (
+      (current-balance (default-to u0 (map-get? merchant-balances tx-sender)))
+    )
+    (asserts! (>= current-balance amount) ERR_INSUFFICIENT_BALANCE)
+    (asserts! (default-to false (map-get? registered-merchants tx-sender)) ERR_UNAUTHORIZED)
+    
+    ;; Update merchant balance
+    (map-set merchant-balances tx-sender (- current-balance amount))
+    (ok true)
+  )
+)
+
+;; Read-only functions
+
+;; Get payment details
+(define-read-only (get-payment (payment-id uint))
+  (map-get? payments payment-id)
+)
+
+;; Get merchant balance
+(define-read-only (get-merchant-balance (merchant principal))
+  (default-to u0 (map-get? merchant-balances merchant))
+)
+
+;; Check if merchant is registered
+(define-read-only (is-registered-merchant (merchant principal))
+  (default-to false (map-get? registered-merchants merchant))
+)
+
+;; Get total payment volume
+(define-read-only (get-total-volume)
+  (var-get total-volume)
+)
+
+;; Get payment counter
+(define-read-only (get-payment-count)
+  (var-get payment-counter)
+)
+
+;; Get last payment ID
+(define-read-only (get-last-payment-id)
+  (var-get last-payment-id)
+)
 `
 
 export default function SmartContractPage() {
@@ -254,7 +355,7 @@ export default function SmartContractPage() {
                         size="sm"
                         onClick={() =>
                           window.open(
-                            "https://explorer.hiro.so/txid/0x60f1caef4d05acd05f036a77f0c200923c5eba6a86d0e8bd6cff5259f985?chain=testnet",
+                            "https://explorer.hiro.so/txid/0x735f79fa00fbd860c4cdc2786f7e25e93881b8fb514c81a291deeeb2ba014f01?chain=testnet",
                             "_blank",
                           )
                         }
@@ -275,7 +376,7 @@ export default function SmartContractPage() {
                         size="sm"
                         onClick={() =>
                           window.open(
-                            "https://explorer.hiro.so/txid/0x60f1caef4d05acd05f036a77f0c200923c5eba6a86d0e8bd6cff5259f985?chain=testnet",
+                            "https://explorer.hiro.so/txid/0x735f79fa00fbd860c4cdc2786f7e25e93881b8fb514c81a291deeeb2ba014f01?chain=testnet",
                             "_blank",
                           )
                         }
@@ -348,7 +449,7 @@ export default function SmartContractPage() {
                     size="sm"
                     onClick={() =>
                       window.open(
-                        "https://explorer.hiro.so/txid/0x60f1caef4d05acd05f036a77f0c200923c5eba6a86d0e8bd6cff5259f985?chain=testnet",
+                        "https://explorer.hiro.so/txid/0x735f79fa00fbd860c4cdc2786f7e25e93881b8fb514c81a291deeeb2ba014f01?chain=testnet",
                         "_blank",
                       )
                     }

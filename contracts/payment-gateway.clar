@@ -7,6 +7,7 @@
 (define-constant ERR_PAYMENT_NOT_FOUND (err u102))
 (define-constant ERR_ALREADY_PROCESSED (err u103))
 (define-constant ERR_INSUFFICIENT_BALANCE (err u104))
+(define-constant ERR_INVALID_REFERENCE (err u105))
 
 ;; Contract owner
 (define-constant CONTRACT_OWNER tx-sender)
@@ -57,6 +58,7 @@
     )
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)
     (asserts! (default-to false (map-get? registered-merchants merchant)) ERR_UNAUTHORIZED)
+    (asserts! (> (len reference) u0) ERR_INVALID_REFERENCE)
     
     ;; Store payment record
     (map-set payments payment-id {
