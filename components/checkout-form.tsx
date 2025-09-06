@@ -711,12 +711,12 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         <p className="text-xs text-blue-700 text-center">
           Need testnet sBTC?{" "}
           <a
-            href="https://explorer.stacks.co/sandbox/faucet?chain=testnet"
+            href="https://docs.hiro.so/en/tools/clarinet/sbtc-integration#manual-sbtc-minting-in-unit-tests"
             target="_blank"
             rel="noopener noreferrer"
             className="underline font-medium inline-flex items-center"
           >
-            Get free tokens from the Stacks Faucet
+            Get free tokens
             <ExternalLink className="w-3 h-3 ml-1" />
           </a>
         </p>
