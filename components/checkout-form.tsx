@@ -711,7 +711,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         <p className="text-xs text-blue-700 text-center">
           Need testnet sBTC?{" "}
           <a
-            href="https://docs.hiro.so/en/tools/clarinet/sbtc-integration#manual-sbtc-minting-in-unit-tests"
+            href="https://platform.hiro.so/faucet"
             target="_blank"
             rel="noopener noreferrer"
             className="underline font-medium inline-flex items-center"

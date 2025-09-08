@@ -283,7 +283,7 @@ export default function HomePage() {
               <Link href="/support" className="hover:text-primary">
                 Support
               </Link>
-              <a href="https://github.com/sbtc-gateway/sbtc-payment-gateway" className="hover:text-primary">
+              <a href="https://github.com/PsalmZoe/sbtc-payment-gateway.git" className="hover:text-primary">
                 GitHub
               </a>
             </div>
