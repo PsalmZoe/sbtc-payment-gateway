@@ -804,15 +804,52 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           </div>
           
           {/* Debug test button - remove in production */}
-          {process.env.NODE_ENV === 'development' && selectedWallet && (
-            <Button
-              onClick={testWalletConnection}
-              variant="outline"
-              size="sm"
-              className="mt-2 w-full bg-yellow-50 border-yellow-200 text-yellow-800"
-            >
-              Test Wallet Connection
-            </Button>
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mt-2 space-y-1">
+              {selectedWallet && (
+                <Button
+                  onClick={testWalletConnection}
+                  variant="outline"
+                  size="sm"
+                  className="w-full bg-yellow-50 border-yellow-200 text-yellow-800"
+                >
+                  Test Wallet Connection
+                </Button>
+              )}
+              <Button
+                onClick={() => {
+                  console.log('[DEBUG] Current wallet state:', {
+                    availableWallets: availableWallets.map(w => ({
+                      name: w.name,
+                      detected: w.detected,
+                      hasProvider: !!w.provider,
+                      hasRequest: !!(w.provider && typeof w.provider.request === 'function')
+                    })),
+                    selectedWallet: selectedWallet ? {
+                      name: selectedWallet.name,
+                      detected: selectedWallet.detected,
+                      hasProvider: !!selectedWallet.provider,
+                      hasRequest: !!(selectedWallet.provider && typeof selectedWallet.provider.request === 'function')
+                    } : null
+                  })
+                  console.log('[DEBUG] Window wallet objects:', {
+                    LeatherProvider: !!(window as any).LeatherProvider,
+                    HiroWalletProvider: !!(window as any).HiroWalletProvider,
+                    satsConnect: !!(window as any).satsConnect,
+                    XverseProviders: !!(window as any).XverseProviders,
+                    StacksProvider: !!(window as any).StacksProvider,
+                    bitcoin: !!(window as any).bitcoin,
+                    stacks: !!(window as any).stacks
+                  })
+                  alert('Debug info logged to console. Check browser dev tools.')
+                }}
+                variant="outline"
+                size="sm"
+                className="w-full bg-gray-50 border-gray-200 text-gray-600"
+              >
+                Debug Wallet Detection
+              </Button>
+            </div>
           )}
         </Card>
       )}
