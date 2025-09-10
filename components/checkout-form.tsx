@@ -80,7 +80,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           detected: true,
         })
       }
-      // Fallback: Check for legacy Xverse provider
+      // Check for legacy Xverse provider
       else if ((window as any).XverseProviders?.StacksProvider) {
         wallets.push({
           name: "Xverse",
@@ -88,11 +88,11 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           detected: true,
         })
       }
-      // Check if Xverse is installed but not yet loaded
-      else if ((window as any).XverseProviders) {
+      // Check if window.StacksProvider exists (another Xverse pattern)
+      else if ((window as any).StacksProvider) {
         wallets.push({
           name: "Xverse",
-          provider: (window as any).XverseProviders,
+          provider: (window as any).StacksProvider,
           detected: true,
         })
       }
@@ -145,7 +145,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         const connectResponse = await walletProvider.request("getAddresses", {})
         address = connectResponse?.result?.addresses?.[0]?.address || ""
       } else if (walletName === "Xverse") {
-        // Handle Xverse address retrieval
         if ((window as any).satsConnect) {
           const connectResponse = await (window as any).satsConnect.request("wallet_connect", {
             purposes: ["stacks"],
@@ -153,6 +152,9 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           })
           const stacksAddress = connectResponse.result?.addresses?.find((addr: any) => addr.purpose === "stacks")
           address = stacksAddress?.address || ""
+        } else if (walletProvider.request) {
+          const connectResponse = await walletProvider.request("getAddresses", {})
+          address = connectResponse?.result?.addresses?.[0]?.address || ""
         }
       }
 
@@ -208,7 +210,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       const memo = `Payment: ${paymentIntentId}`
 
       console.log(`[Checkout] Starting payment with ${selectedWallet.name}`)
-      console.log(`[Checkout] Amount: ${amount} sBTC, Memo: ${memo}`)
+      console.log(`[Checkout] Amount: ${amount} sBTC (${amountInMicroStx} microSTX), Memo: ${memo}`)
 
       let txId: string | null = null
 
@@ -292,32 +294,51 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
   const handleXversePayment = async (provider: any, amount: number, memo: string): Promise<string> => {
     try {
-      console.log("[Xverse] Starting payment process...")
+      console.log("[Checkout] Starting Xverse payment process...")
 
-      // Check if we have sats-connect available
+      // Method 1: Try sats-connect (modern Xverse API)
       if (typeof window !== "undefined" && (window as any).satsConnect) {
+        console.log("[Checkout] Using sats-connect API")
         return await handleXverseWithSatsConnect((window as any).satsConnect, amount, memo)
       }
 
-      // Fallback to legacy Xverse provider
-      if (provider && typeof provider.request === "function") {
-        return await handleXverseLegacy(provider, amount, memo)
+      // Method 2: Try legacy StacksProvider
+      if (typeof window !== "undefined" && (window as any).StacksProvider) {
+        console.log("[Checkout] Using legacy StacksProvider")
+        return await handleXverseLegacy((window as any).StacksProvider, amount, memo)
       }
 
-      // Try to connect via window.XverseProviders if available
+      // Method 3: Try XverseProviders.StacksProvider
       if (typeof window !== "undefined" && (window as any).XverseProviders?.StacksProvider) {
+        console.log("[Checkout] Using XverseProviders.StacksProvider")
         return await handleXverseLegacy((window as any).XverseProviders.StacksProvider, amount, memo)
       }
 
-      throw new Error("Xverse wallet not found. Please make sure Xverse is installed and unlocked.")
+      // Method 4: Try the provider passed in
+      if (provider && typeof provider.request === "function") {
+        console.log("[Checkout] Using provided Xverse provider")
+        return await handleXverseLegacy(provider, amount, memo)
+      }
+
+      throw new Error(
+        "Xverse wallet not found or not properly initialized. Please make sure Xverse is installed, unlocked, and refresh the page.",
+      )
     } catch (error: any) {
-      console.error("[Xverse Payment Error]:", error)
+      console.error("[Checkout] Xverse Payment Error:", error)
+
+      // Provide more specific error messages for common Xverse issues
+      if (error.message?.includes("request") && error.message?.includes("not implemented")) {
+        throw new Error("Xverse wallet connection failed. Please refresh the page and try again.")
+      }
+
       throw error
     }
   }
 
   const handleXverseWithSatsConnect = async (satsConnect: any, amount: number, memo: string): Promise<string> => {
     try {
+      console.log("[Checkout] Connecting via sats-connect...")
+
       // First, request wallet connection
       const connectResponse = await satsConnect.request("wallet_connect", {
         purposes: ["stacks"],
@@ -333,7 +354,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         throw new Error("No Stacks address found in Xverse wallet")
       }
 
-      console.log("[Xverse] Connected successfully, making transfer...")
+      console.log("[Checkout] Xverse connected successfully, making transfer...")
 
       const transferResponse = await satsConnect.request("stx_transferTokens", {
         recipient: CONTRACT_ADDRESS,
@@ -355,15 +376,23 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
   }
 
-  // Legacy Xverse provider
   const handleXverseLegacy = async (provider: any, amount: number, memo: string): Promise<string> => {
     try {
+      console.log("[Checkout] Using legacy Xverse provider...")
+
+      // Check if provider has the request method
+      if (!provider || typeof provider.request !== "function") {
+        throw new Error("Invalid Xverse provider - missing request method")
+      }
+
       // Try to get accounts first
       const accounts = await provider.request("getAddresses", {})
 
       if (!accounts?.result?.addresses?.length) {
         throw new Error("Please connect your Xverse wallet first")
       }
+
+      console.log("[Checkout] Xverse accounts retrieved, making transfer...")
 
       // Make transfer
       const transferResponse = await provider.request("stx_transferTokens", {
@@ -382,6 +411,14 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       if (error.message?.includes("User rejected") || error.message?.includes("cancelled")) {
         throw new Error("Payment was cancelled by user")
       }
+
+      // Handle the specific "request function not implemented" error
+      if (error.message?.includes("request") && error.message?.includes("not implemented")) {
+        throw new Error(
+          "Xverse wallet API not available. Please refresh the page and ensure Xverse is properly loaded.",
+        )
+      }
+
       throw error
     }
   }
@@ -403,28 +440,33 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
           switch (txData.tx_status) {
             case "success":
+              console.log("[Checkout] Transaction confirmed as successful!")
               setStatus("confirmed")
               await updatePaymentStatus(paymentIntentId, "succeeded", txId)
               return
             case "abort_by_response":
             case "abort_by_post_condition":
+              console.log("[Checkout] Transaction failed on network")
               setStatus("failed")
               setErrorMessage("Transaction was rejected by the network")
               await updatePaymentStatus(paymentIntentId, "failed", txId)
               return
             case "pending":
+              console.log("[Checkout] Transaction still pending...")
               // Continue polling
               break
             default:
-              console.log(`[Checkout] Unknown status: ${txData.tx_status}`)
+              console.log(`[Checkout] Unknown transaction status: ${txData.tx_status}`)
           }
+        } else {
+          console.log(`[Checkout] API response not OK: ${response.status}`)
         }
 
         // Continue polling if not max attempts reached
         if (pollAttempts < MAX_POLL_ATTEMPTS) {
           setTimeout(checkStatus, POLL_INTERVAL)
         } else {
-          console.log("[Checkout] Max polling attempts reached, marking as successful")
+          console.log("[Checkout] Max polling attempts reached, assuming success")
           setStatus("confirmed")
           await updatePaymentStatus(paymentIntentId, "succeeded", txId)
         }
@@ -434,6 +476,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         if (pollAttempts < MAX_POLL_ATTEMPTS) {
           setTimeout(checkStatus, POLL_INTERVAL * 2) // Longer interval on error
         } else {
+          console.log("[Checkout] Max attempts reached after errors, assuming success")
           setStatus("confirmed")
           await updatePaymentStatus(paymentIntentId, "succeeded", txId)
         }
@@ -495,6 +538,10 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       return "Network error. Please check your connection and try again."
     }
 
+    if (error.message?.includes("request") && error.message?.includes("not implemented")) {
+      return "Xverse wallet API error. Please refresh the page and try again."
+    }
+
     return error.message || "Payment failed - please try again"
   }
 
@@ -546,7 +593,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       case "pending":
         return `Confirming transaction... (${pollAttempts}/${MAX_POLL_ATTEMPTS})`
       case "confirmed":
-        return "Payment successful!"
+        return "Payment successful!" // Fixed success message
       case "failed":
         return errorMessage || "Payment failed"
       default:
