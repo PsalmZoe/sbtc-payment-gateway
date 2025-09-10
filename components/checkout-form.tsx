@@ -20,8 +20,8 @@ type WalletProvider = {
   detected: boolean
 }
 
-const SBTC_CONTRACT_ADDRESS = "ST1F7QA2MDF17S807EPA36TSS8AMEFYKKA9TVGWXT"
-const SBTC_CONTRACT_NAME = "sbtc-token"
+const SBTC_CONTRACT_ADDRESS = "ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS"
+const SBTC_CONTRACT_NAME = "payment_gateway"
 const NETWORK = "testnet"
 
 // QR Code generation function using QR Server API
@@ -302,15 +302,36 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     console.log("[Checkout] Starting Leather sBTC payment...")
 
     try {
-      const connectResponse = await provider.request("getAddresses", {})
+      if (!provider || typeof provider.request !== "function") {
+        throw new Error("Leather wallet provider not available")
+      }
+
+      // Check if wallet is connected first
+      let connectResponse
+      try {
+        connectResponse = await provider.request("getAddresses", {})
+      } catch (connectError) {
+        // Try to connect if not already connected
+        console.log("[Checkout] Attempting to connect to Leather wallet...")
+        try {
+          await provider.request("wallet_connect", {})
+          connectResponse = await provider.request("getAddresses", {})
+        } catch (secondConnectError) {
+          throw new Error("Failed to connect to Leather wallet. Please unlock your wallet and try again.")
+        }
+      }
+
       if (!connectResponse?.result?.addresses?.length) {
-        throw new Error("Please connect your Leather wallet first")
+        throw new Error("No addresses found in Leather wallet. Please unlock your wallet.")
       }
 
       const senderAddress = connectResponse.result.addresses[0].address
-      const recipientAddress = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || SBTC_CONTRACT_ADDRESS
+      const recipientAddress =
+        process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`
 
       console.log("[Checkout] Calling sBTC contract transfer function...")
+      console.log("[Checkout] Contract:", `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`)
+      console.log("[Checkout] Amount:", amount, "From:", senderAddress, "To:", recipientAddress)
 
       const contractCallResponse = await provider.request("stx_callContract", {
         contractAddress: SBTC_CONTRACT_ADDRESS,
@@ -330,11 +351,18 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       }
 
       return contractCallResponse.result.txid
-    } catch (connectError) {
+    } catch (connectError: any) {
       console.error("[Checkout] Leather sBTC connection error:", connectError)
-      throw new Error(
-        "Failed to connect to Leather wallet or call sBTC contract. Please ensure it's unlocked and try again.",
-      )
+
+      if (connectError.message?.includes("User rejected") || connectError.message?.includes("cancelled")) {
+        throw new Error("Payment was cancelled by user")
+      }
+
+      if (connectError.message?.includes("unlock")) {
+        throw new Error("Please unlock your Leather wallet and try again.")
+      }
+
+      throw new Error("Failed to connect to Leather wallet. Please ensure it's installed, unlocked, and try again.")
     }
   }
 
@@ -342,73 +370,61 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     try {
       console.log("[Checkout] Starting Xverse sBTC payment process...")
 
-      if (
-        typeof window !== "undefined" &&
-        (window as any).satsConnect &&
-        typeof (window as any).satsConnect.request === "function"
-      ) {
-        console.log("[Checkout] Using sats-connect API for sBTC")
-        try {
-          return await handleXverseSbtcWithSatsConnect((window as any).satsConnect, amount, memo)
-        } catch (satsConnectError) {
-          console.log("[Checkout] sats-connect sBTC failed, trying legacy methods:", satsConnectError)
-        }
+      let xverseProvider = null
+      let connectionMethod = ""
+
+      // Method 1: Check for sats-connect (most reliable)
+      if (typeof window !== "undefined" && (window as any).satsConnect) {
+        console.log("[Checkout] Found sats-connect API")
+        xverseProvider = (window as any).satsConnect
+        connectionMethod = "satsConnect"
+      }
+      // Method 2: Check for XverseProviders.StacksProvider
+      else if (typeof window !== "undefined" && (window as any).XverseProviders?.StacksProvider) {
+        console.log("[Checkout] Found XverseProviders.StacksProvider")
+        xverseProvider = (window as any).XverseProviders.StacksProvider
+        connectionMethod = "XverseProviders"
+      }
+      // Method 3: Check for legacy StacksProvider
+      else if (typeof window !== "undefined" && (window as any).StacksProvider) {
+        console.log("[Checkout] Found legacy StacksProvider")
+        xverseProvider = (window as any).StacksProvider
+        connectionMethod = "StacksProvider"
       }
 
-      if (
-        typeof window !== "undefined" &&
-        (window as any).XverseProviders?.StacksProvider &&
-        typeof (window as any).XverseProviders.StacksProvider.request === "function"
-      ) {
-        console.log("[Checkout] Using XverseProviders.StacksProvider for sBTC")
-        try {
-          return await handleXverseSbtcLegacy((window as any).XverseProviders.StacksProvider, amount, memo)
-        } catch (xverseProviderError) {
-          console.log("[Checkout] XverseProviders sBTC failed, trying StacksProvider:", xverseProviderError)
-        }
+      if (!xverseProvider) {
+        throw new Error("Xverse wallet not detected. Please install Xverse extension and refresh the page.")
       }
 
-      if (
-        typeof window !== "undefined" &&
-        (window as any).StacksProvider &&
-        typeof (window as any).StacksProvider.request === "function"
-      ) {
-        console.log("[Checkout] Using legacy StacksProvider for sBTC")
-        try {
-          return await handleXverseSbtcLegacy((window as any).StacksProvider, amount, memo)
-        } catch (stacksProviderError) {
-          console.log("[Checkout] StacksProvider sBTC failed:", stacksProviderError)
-        }
-      }
+      console.log(`[Checkout] Using ${connectionMethod} for Xverse connection`)
 
-      if (provider && typeof provider.request === "function") {
-        console.log("[Checkout] Using provided Xverse provider for sBTC")
-        try {
-          return await handleXverseSbtcLegacy(provider, amount, memo)
-        } catch (providerError) {
-          console.log("[Checkout] Provided provider sBTC failed:", providerError)
-        }
+      if (connectionMethod === "satsConnect") {
+        return await handleXverseSbtcWithSatsConnect(xverseProvider, amount, memo)
+      } else {
+        return await handleXverseSbtcLegacy(xverseProvider, amount, memo)
       }
-
-      throw new Error(
-        "Xverse wallet not properly loaded. Please refresh the page, ensure Xverse extension is installed and unlocked, then try again.",
-      )
     } catch (error: any) {
       console.error("[Checkout] Xverse sBTC Payment Error:", error)
 
-      if (error.message?.includes("request") && error.message?.includes("not implemented")) {
-        throw new Error(
-          "Xverse wallet API not available. Please refresh the page and ensure Xverse is properly loaded.",
-        )
+      if (error.message?.includes("not detected") || error.message?.includes("not available")) {
+        throw new Error("Xverse wallet not found. Please install the Xverse browser extension and refresh the page.")
       }
 
-      throw error
+      if (error.message?.includes("User rejected") || error.message?.includes("cancelled")) {
+        throw new Error("Payment was cancelled by user")
+      }
+
+      throw new Error("Failed to connect to Xverse wallet. Please ensure it's installed, unlocked, and try again.")
     }
   }
 
   const handleXverseSbtcWithSatsConnect = async (satsConnect: any, amount: number, memo: string): Promise<string> => {
     try {
       console.log("[Checkout] Connecting via sats-connect for sBTC...")
+
+      if (!satsConnect || typeof satsConnect.request !== "function") {
+        throw new Error("sats-connect API not available")
+      }
 
       const connectResponse = await satsConnect.request("wallet_connect", {
         purposes: ["stacks"],
@@ -425,9 +441,11 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       }
 
       const senderAddress = stacksAddress.address
-      const recipientAddress = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || SBTC_CONTRACT_ADDRESS
+      const recipientAddress =
+        process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`
 
       console.log("[Checkout] Xverse connected successfully, making sBTC contract call...")
+      console.log("[Checkout] Contract:", `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`)
 
       const contractCallResponse = await satsConnect.request("stx_callContract", {
         contractAddress: SBTC_CONTRACT_ADDRESS,
@@ -460,19 +478,21 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       console.log("[Checkout] Using legacy Xverse provider for sBTC...")
 
       if (!provider || typeof provider.request !== "function") {
-        throw new Error("Invalid Xverse provider - missing request method")
+        throw new Error("Xverse provider not available or missing request method")
       }
 
       const accounts = await provider.request("getAddresses", {})
 
       if (!accounts?.result?.addresses?.length) {
-        throw new Error("Please connect your Xverse wallet first")
+        throw new Error("No addresses found in Xverse wallet. Please unlock your wallet.")
       }
 
       const senderAddress = accounts.result.addresses[0].address
-      const recipientAddress = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || SBTC_CONTRACT_ADDRESS
+      const recipientAddress =
+        process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`
 
       console.log("[Checkout] Xverse accounts retrieved, making sBTC contract call...")
+      console.log("[Checkout] Contract:", `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`)
 
       const contractCallResponse = await provider.request("stx_callContract", {
         contractAddress: SBTC_CONTRACT_ADDRESS,
