@@ -53,26 +53,11 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
     const wallets: WalletProvider[] = []
 
-    // Check for Leather Wallet with multiple detection methods
     if ((window as any).LeatherProvider) {
-      console.log("[Wallet Detection] Found LeatherProvider")
+      console.log("[Wallet Detection] Found Leather wallet")
       wallets.push({
         name: "Leather",
         provider: (window as any).LeatherProvider,
-        detected: true,
-      })
-    } else if ((window as any).btc && (window as any).btc.request) {
-      console.log("[Wallet Detection] Found Leather via btc.request")
-      wallets.push({
-        name: "Leather",
-        provider: (window as any).btc,
-        detected: true,
-      })
-    } else if ((window as any).StacksProvider && (window as any).StacksProvider.isLeather) {
-      console.log("[Wallet Detection] Found Leather via StacksProvider")
-      wallets.push({
-        name: "Leather",
-        provider: (window as any).StacksProvider,
         detected: true,
       })
     }
@@ -87,7 +72,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
 
     if (typeof window !== "undefined") {
-      // Check for sats-connect (new Xverse integration) - highest priority
+      // Check for sats-connect (new Xverse integration)
       if ((window as any).satsConnect && typeof (window as any).satsConnect.request === "function") {
         wallets.push({
           name: "Xverse",
@@ -95,7 +80,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           detected: true,
         })
       }
-      // Check for XverseProviders.StacksProvider - second priority
+      // Check for XverseProviders.StacksProvider
       else if (
         (window as any).XverseProviders?.StacksProvider &&
         typeof (window as any).XverseProviders.StacksProvider.request === "function"
@@ -103,14 +88,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         wallets.push({
           name: "Xverse",
           provider: (window as any).XverseProviders.StacksProvider,
-          detected: true,
-        })
-      }
-      // Check if window.StacksProvider exists - third priority
-      else if ((window as any).StacksProvider && typeof (window as any).StacksProvider.request === "function") {
-        wallets.push({
-          name: "Xverse",
-          provider: (window as any).StacksProvider,
           detected: true,
         })
       }
@@ -317,59 +294,18 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     console.log("[Checkout] Starting Leather sBTC payment...")
 
     try {
-      if (!provider) {
+      if (!provider || typeof provider.request !== "function") {
         throw new Error("Leather wallet provider not available")
       }
 
-      let senderAddress = ""
-      let connectResponse
+      console.log("[Checkout] Connecting to Leather wallet...")
+      const connectResponse = await provider.request("getAddresses", {})
 
-      // Method 1: Try modern Leather API
-      if (typeof provider.request === "function") {
-        try {
-          console.log("[Checkout] Trying modern Leather API...")
-          connectResponse = await provider.request("getAddresses", {})
-          if (connectResponse?.result?.addresses?.length) {
-            senderAddress = connectResponse.result.addresses[0].address
-          }
-        } catch (modernError) {
-          console.log("[Checkout] Modern API failed, trying legacy methods...")
-        }
-      }
-
-      // Method 2: Try legacy getAddresses
-      if (!senderAddress && typeof provider.getAddresses === "function") {
-        try {
-          console.log("[Checkout] Trying legacy getAddresses...")
-          const addresses = await provider.getAddresses()
-          if (addresses?.result?.addresses?.length) {
-            senderAddress = addresses.result.addresses[0].address
-          }
-        } catch (legacyError) {
-          console.log("[Checkout] Legacy getAddresses failed...")
-        }
-      }
-
-      // Method 3: Try direct connection request
-      if (!senderAddress) {
-        try {
-          console.log("[Checkout] Trying direct connection...")
-          if (typeof provider.request === "function") {
-            await provider.request("wallet_connect", {})
-            connectResponse = await provider.request("getAddresses", {})
-            if (connectResponse?.result?.addresses?.length) {
-              senderAddress = connectResponse.result.addresses[0].address
-            }
-          }
-        } catch (directError) {
-          console.log("[Checkout] Direct connection failed...")
-        }
-      }
-
-      if (!senderAddress) {
+      if (!connectResponse?.result?.addresses?.length) {
         throw new Error("Failed to get wallet address. Please unlock your Leather wallet and try again.")
       }
 
+      const senderAddress = connectResponse.result.addresses[0].address
       const recipientAddress =
         process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`
 
@@ -377,45 +313,18 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       console.log("[Checkout] Contract:", `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`)
       console.log("[Checkout] Amount:", amount, "From:", senderAddress, "To:", recipientAddress)
 
-      let contractCallResponse
-
-      // Try modern contract call API
-      if (typeof provider.request === "function") {
-        try {
-          contractCallResponse = await provider.request("stx_callContract", {
-            contractAddress: SBTC_CONTRACT_ADDRESS,
-            contractName: SBTC_CONTRACT_NAME,
-            functionName: "transfer",
-            functionArgs: [
-              `u${amount}`,
-              `'${senderAddress}`,
-              `'${recipientAddress}`,
-              memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
-            ],
-            network: NETWORK,
-          })
-        } catch (requestError) {
-          console.log("[Checkout] Modern contract call failed, trying legacy...")
-
-          // Try legacy contract call method
-          if (typeof provider.callContract === "function") {
-            contractCallResponse = await provider.callContract({
-              contractAddress: SBTC_CONTRACT_ADDRESS,
-              contractName: SBTC_CONTRACT_NAME,
-              functionName: "transfer",
-              functionArgs: [
-                `u${amount}`,
-                `'${senderAddress}`,
-                `'${recipientAddress}`,
-                memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
-              ],
-              network: NETWORK,
-            })
-          } else {
-            throw requestError
-          }
-        }
-      }
+      const contractCallResponse = await provider.request("stx_callContract", {
+        contractAddress: SBTC_CONTRACT_ADDRESS,
+        contractName: SBTC_CONTRACT_NAME,
+        functionName: "transfer",
+        functionArgs: [
+          `u${amount}`,
+          `'${senderAddress}`,
+          `'${recipientAddress}`,
+          memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
+        ],
+        network: NETWORK,
+      })
 
       if (!contractCallResponse?.result?.txid) {
         throw new Error("sBTC transaction was cancelled or failed")
@@ -433,11 +342,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         throw new Error("Please unlock your Leather wallet and try again.")
       }
 
-      if (connectError.message?.includes("not available") || connectError.message?.includes("not found")) {
-        throw new Error("Leather wallet not detected. Please install Leather extension and refresh the page.")
-      }
-
-      throw new Error(`Leather wallet error: ${connectError.message || "Connection failed"}`)
+      throw new Error(`Failed to connect to Leather wallet. Please ensure it's installed, unlocked, and try again.`)
     }
   }
 
