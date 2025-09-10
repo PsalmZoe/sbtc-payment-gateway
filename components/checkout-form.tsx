@@ -39,6 +39,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const [copied, setCopied] = useState(false)
   const [qrCodeData, setQrCodeData] = useState<string>("")
   const [pollAttempts, setPollAttempts] = useState(0)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
 
   // Generate QR code data
   useEffect(() => {
@@ -73,23 +74,26 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
     if (typeof window !== "undefined") {
       // Check for sats-connect (new Xverse integration)
-      if ((window as any).satsConnect) {
+      if ((window as any).satsConnect && typeof (window as any).satsConnect.request === "function") {
         wallets.push({
           name: "Xverse",
           provider: (window as any).satsConnect,
           detected: true,
         })
       }
-      // Check for legacy Xverse provider
-      else if ((window as any).XverseProviders?.StacksProvider) {
+      // Check for legacy Xverse provider with proper validation
+      else if (
+        (window as any).XverseProviders?.StacksProvider &&
+        typeof (window as any).XverseProviders.StacksProvider.request === "function"
+      ) {
         wallets.push({
           name: "Xverse",
           provider: (window as any).XverseProviders.StacksProvider,
           detected: true,
         })
       }
-      // Check if window.StacksProvider exists (another Xverse pattern)
-      else if ((window as any).StacksProvider) {
+      // Check if window.StacksProvider exists with proper validation
+      else if ((window as any).StacksProvider && typeof (window as any).StacksProvider.request === "function") {
         wallets.push({
           name: "Xverse",
           provider: (window as any).StacksProvider,
@@ -183,11 +187,12 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
   // Handle payment with selected wallet
   const handlePayWithWallet = async () => {
-    if (!selectedWallet) {
-      setErrorMessage("Please select a wallet first")
+    if (!selectedWallet || isProcessingPayment) {
+      if (!selectedWallet) setErrorMessage("Please select a wallet first")
       return
     }
 
+    setIsProcessingPayment(true)
     setStatus("connecting")
     setErrorMessage("")
     setPollAttempts(0)
@@ -241,6 +246,8 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       console.error("[Checkout] Payment error:", error)
       setErrorMessage(getErrorMessage(error))
       setStatus("failed")
+    } finally {
+      setIsProcessingPayment(false)
     }
   }
 
@@ -272,11 +279,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   }
 
   const handleLeatherPayment = async (provider: any, amount: number, memo: string): Promise<string> => {
-    const connectResponse = await provider.request("getAddresses", {})
-
-    if (!connectResponse?.result?.addresses?.length) {
-      throw new Error("Please connect your Leather wallet first")
-    }
+    console.log("[Checkout] Starting Leather payment...")
 
     const transferResponse = await provider.request("stx_transferTokens", {
       recipient: CONTRACT_ADDRESS,
@@ -297,19 +300,31 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       console.log("[Checkout] Starting Xverse payment process...")
 
       // Method 1: Try sats-connect (modern Xverse API)
-      if (typeof window !== "undefined" && (window as any).satsConnect) {
+      if (
+        typeof window !== "undefined" &&
+        (window as any).satsConnect &&
+        typeof (window as any).satsConnect.request === "function"
+      ) {
         console.log("[Checkout] Using sats-connect API")
         return await handleXverseWithSatsConnect((window as any).satsConnect, amount, memo)
       }
 
       // Method 2: Try legacy StacksProvider
-      if (typeof window !== "undefined" && (window as any).StacksProvider) {
+      if (
+        typeof window !== "undefined" &&
+        (window as any).StacksProvider &&
+        typeof (window as any).StacksProvider.request === "function"
+      ) {
         console.log("[Checkout] Using legacy StacksProvider")
         return await handleXverseLegacy((window as any).StacksProvider, amount, memo)
       }
 
       // Method 3: Try XverseProviders.StacksProvider
-      if (typeof window !== "undefined" && (window as any).XverseProviders?.StacksProvider) {
+      if (
+        typeof window !== "undefined" &&
+        (window as any).XverseProviders?.StacksProvider &&
+        typeof (window as any).XverseProviders.StacksProvider.request === "function"
+      ) {
         console.log("[Checkout] Using XverseProviders.StacksProvider")
         return await handleXverseLegacy((window as any).XverseProviders.StacksProvider, amount, memo)
       }
@@ -321,14 +336,15 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       }
 
       throw new Error(
-        "Xverse wallet not found or not properly initialized. Please make sure Xverse is installed, unlocked, and refresh the page.",
+        "Xverse wallet not properly loaded. Please refresh the page and ensure Xverse extension is installed and unlocked.",
       )
     } catch (error: any) {
       console.error("[Checkout] Xverse Payment Error:", error)
 
-      // Provide more specific error messages for common Xverse issues
       if (error.message?.includes("request") && error.message?.includes("not implemented")) {
-        throw new Error("Xverse wallet connection failed. Please refresh the page and try again.")
+        throw new Error(
+          "Xverse wallet API not available. Please refresh the page and ensure Xverse is properly loaded.",
+        )
       }
 
       throw error
@@ -339,7 +355,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     try {
       console.log("[Checkout] Connecting via sats-connect...")
 
-      // First, request wallet connection
       const connectResponse = await satsConnect.request("wallet_connect", {
         purposes: ["stacks"],
         message: "Connect to complete your STX payment",
@@ -380,12 +395,10 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     try {
       console.log("[Checkout] Using legacy Xverse provider...")
 
-      // Check if provider has the request method
       if (!provider || typeof provider.request !== "function") {
         throw new Error("Invalid Xverse provider - missing request method")
       }
 
-      // Try to get accounts first
       const accounts = await provider.request("getAddresses", {})
 
       if (!accounts?.result?.addresses?.length) {
@@ -394,7 +407,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
       console.log("[Checkout] Xverse accounts retrieved, making transfer...")
 
-      // Make transfer
       const transferResponse = await provider.request("stx_transferTokens", {
         recipient: CONTRACT_ADDRESS,
         amount: amount.toString(),
@@ -412,7 +424,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         throw new Error("Payment was cancelled by user")
       }
 
-      // Handle the specific "request function not implemented" error
       if (error.message?.includes("request") && error.message?.includes("not implemented")) {
         throw new Error(
           "Xverse wallet API not available. Please refresh the page and ensure Xverse is properly loaded.",
@@ -453,7 +464,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
               return
             case "pending":
               console.log("[Checkout] Transaction still pending...")
-              // Continue polling
               break
             default:
               console.log(`[Checkout] Unknown transaction status: ${txData.tx_status}`)
@@ -462,7 +472,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           console.log(`[Checkout] API response not OK: ${response.status}`)
         }
 
-        // Continue polling if not max attempts reached
         if (pollAttempts < MAX_POLL_ATTEMPTS) {
           setTimeout(checkStatus, POLL_INTERVAL)
         } else {
@@ -474,7 +483,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         console.error("[Checkout] Status check error:", error)
 
         if (pollAttempts < MAX_POLL_ATTEMPTS) {
-          setTimeout(checkStatus, POLL_INTERVAL * 2) // Longer interval on error
+          setTimeout(checkStatus, POLL_INTERVAL * 2)
         } else {
           console.log("[Checkout] Max attempts reached after errors, assuming success")
           setStatus("confirmed")
@@ -483,11 +492,9 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       }
     }
 
-    // Start polling
     setTimeout(checkStatus, POLL_INTERVAL)
   }
 
-  // Update payment status in backend
   const updatePaymentStatus = async (intentId: string, status: string, txHash: string) => {
     try {
       console.log("[Checkout] Updating payment status:", { intentId, status, txHash })
@@ -523,7 +530,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
 
     if (error.message?.includes("Insufficient") || error.message?.includes("balance")) {
-      return error.message // Return the detailed balance message we created
+      return error.message
     }
 
     if (error.message?.includes("connect")) {
@@ -545,7 +552,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     return error.message || "Payment failed - please try again"
   }
 
-  // Copy text to clipboard
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
@@ -556,22 +562,20 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
   }
 
-  // Retry failed payment
   const retryPayment = () => {
     setStatus("idle")
     setErrorMessage("")
     setTxHash("")
     setPollAttempts(0)
+    setIsProcessingPayment(false)
   }
 
-  // Refresh wallet detection
   const refreshWallets = () => {
     setAvailableWallets([])
     setSelectedWallet(null)
     detectWallets()
   }
 
-  // Get status display components
   const getStatusIcon = () => {
     switch (status) {
       case "confirmed":
@@ -593,7 +597,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       case "pending":
         return `Confirming transaction... (${pollAttempts}/${MAX_POLL_ATTEMPTS})`
       case "confirmed":
-        return "Payment successful!" // Fixed success message
+        return "Payment successful!"
       case "failed":
         return errorMessage || "Payment failed"
       default:
@@ -601,7 +605,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
   }
 
-  // Render success state
   if (status === "confirmed") {
     return (
       <Card className="p-6 text-center">
@@ -630,7 +633,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
   return (
     <div className="space-y-4">
-      {/* Contract Address Display */}
       <Card className="p-4 bg-blue-50 border-blue-200">
         <div className="flex items-center justify-between">
           <div className="min-w-0 flex-1">
@@ -648,14 +650,12 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         </div>
       </Card>
 
-      {/* Status Display */}
       <div className="text-center py-4">
         {getStatusIcon()}
         <p className="mt-2 text-sm text-gray-600">{getStatusMessage()}</p>
         <p className="text-xs text-orange-600 mt-1">sBTC Testnet • Amount: {amount} sBTC</p>
       </div>
 
-      {/* Wallet Selection */}
       {availableWallets.length > 0 && (
         <Card className="p-4">
           <p className="text-sm font-medium text-gray-700 mb-2">Select Wallet:</p>
@@ -676,11 +676,10 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         </Card>
       )}
 
-      {/* Main Action Button */}
       <div className="space-y-2">
         <Button
           onClick={handlePayWithWallet}
-          disabled={!selectedWallet || (status !== "idle" && status !== "failed")}
+          disabled={!selectedWallet || isProcessingPayment || (status !== "idle" && status !== "failed")}
           className="w-full bg-orange-500 hover:bg-orange-600 text-white"
           size="lg"
         >
@@ -694,7 +693,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
               : "Processing Payment..."}
         </Button>
 
-        {/* Retry button for failed payments */}
         {status === "failed" && (
           <Button onClick={retryPayment} variant="outline" className="w-full bg-transparent" size="sm">
             <RefreshCw className="mr-2 h-4 w-4" />
@@ -703,7 +701,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         )}
       </div>
 
-      {/* Wallet Detection Help */}
       {availableWallets.length === 0 && (
         <Card className="p-4 bg-yellow-50 border-yellow-200">
           <div className="text-center space-y-2">
@@ -750,7 +747,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         </Card>
       )}
 
-      {/* QR Code Section - Now with working QR code */}
       <Card className="p-4 bg-gray-50">
         <p className="text-sm text-gray-600 text-center mb-2">Or scan with mobile wallet:</p>
         <div className="w-40 h-40 bg-white border-2 border-gray-200 mx-auto flex items-center justify-center rounded-lg overflow-hidden">
@@ -760,7 +756,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
               alt="Payment QR Code"
               className="w-full h-full object-contain"
               onError={(e) => {
-                // Fallback to text display if QR service fails
                 console.error("QR Code failed to load")
                 ;(e.target as HTMLImageElement).style.display = "none"
                 const parent = (e.target as HTMLImageElement).parentNode as HTMLElement
@@ -790,7 +785,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         </details>
       </Card>
 
-      {/* Testnet Faucet Link */}
       <Card className="p-3 bg-blue-50 border-blue-200">
         <p className="text-xs text-blue-700 text-center">
           Need testnet sBTC?{" "}
@@ -806,7 +800,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         </p>
       </Card>
 
-      {/* Error Message */}
       {errorMessage && status === "failed" && (
         <Card className="p-3 bg-red-50 border-red-200">
           <div className="flex items-center space-x-2 text-red-700">
