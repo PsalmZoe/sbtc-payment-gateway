@@ -12,6 +12,11 @@ interface CheckoutFormProps {
   contractId: Buffer
 }
 
+interface WalletPromptProps {
+  walletName: string
+  isVisible: boolean
+}
+
 type PaymentStatus = "idle" | "connecting" | "pending" | "confirmed" | "failed"
 
 type WalletProvider = {
@@ -24,10 +29,41 @@ const SBTC_CONTRACT_ADDRESS = "ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS"
 const SBTC_CONTRACT_NAME = "payment_gateway"
 const NETWORK = "testnet"
 
+// Network configuration for better consistency
+const NETWORK_CONFIG = {
+  url: "https://stacks-node-api.testnet.stacks.co",
+  network: "testnet",
+  chainId: 0x80000000 // Testnet chain ID
+}
+
 // QR Code generation function using QR Server API
 const generateQRCodeSVG = (data: string, size = 160): string => {
   const encodedData = encodeURIComponent(data)
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodedData}&format=png&margin=10`
+}
+
+// Wallet prompt component
+const WalletPrompt = ({ walletName, isVisible }: WalletPromptProps) => {
+  if (!isVisible) return null
+  
+  return (
+    <Card className="p-4 bg-blue-50 border-blue-200 animate-pulse">
+      <div className="text-center">
+        <Wallet className="w-8 h-8 mx-auto text-blue-500 mb-2" />
+        <p className="text-sm font-medium text-blue-800">
+          Check Your {walletName} Wallet
+        </p>
+        <p className="text-xs text-blue-600 mt-1">
+          A transaction approval request should appear in your wallet extension.
+          Please approve it to continue.
+        </p>
+        <div className="flex items-center justify-center mt-2 text-xs text-blue-500">
+          <Clock className="w-3 h-3 mr-1 animate-spin" />
+          Waiting for approval...
+        </div>
+      </div>
+    </Card>
+  )
 }
 
 export default function CheckoutForm({ paymentIntentId, amount, contractId }: CheckoutFormProps) {
@@ -39,6 +75,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const [copied, setCopied] = useState(false)
   const [qrCodeData, setQrCodeData] = useState<string>("")
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const [showWalletPrompt, setShowWalletPrompt] = useState(false)
 
   // Generate QR code data
   useEffect(() => {
@@ -53,6 +90,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
     const wallets: WalletProvider[] = []
 
+    // Check for Leather wallet
     if ((window as any).LeatherProvider) {
       console.log("[Wallet Detection] Found Leather wallet")
       wallets.push({
@@ -64,6 +102,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
     // Check for Hiro Wallet
     if ((window as any).HiroWalletProvider) {
+      console.log("[Wallet Detection] Found Hiro wallet")
       wallets.push({
         name: "Hiro",
         provider: (window as any).HiroWalletProvider,
@@ -74,6 +113,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     if (typeof window !== "undefined") {
       // Check for sats-connect (new Xverse integration)
       if ((window as any).satsConnect && typeof (window as any).satsConnect.request === "function") {
+        console.log("[Wallet Detection] Found Xverse wallet (sats-connect)")
         wallets.push({
           name: "Xverse",
           provider: (window as any).satsConnect,
@@ -85,6 +125,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         (window as any).XverseProviders?.StacksProvider &&
         typeof (window as any).XverseProviders.StacksProvider.request === "function"
       ) {
+        console.log("[Wallet Detection] Found Xverse wallet (XverseProviders)")
         wallets.push({
           name: "Xverse",
           provider: (window as any).XverseProviders.StacksProvider,
@@ -93,6 +134,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       }
     }
 
+    console.log("[Wallet Detection] Total wallets found:", wallets.length)
     setAvailableWallets(wallets)
 
     // Auto-select first available wallet
@@ -201,8 +243,19 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     setIsProcessingPayment(true)
     setStatus("connecting")
     setErrorMessage("")
+    setShowWalletPrompt(false)
 
     try {
+      // Add detailed logging
+      console.log('[DEBUG] Starting payment process with:', {
+        wallet: selectedWallet.name,
+        amount: amount,
+        paymentIntentId: paymentIntentId,
+        contractAddress: SBTC_CONTRACT_ADDRESS,
+        contractName: SBTC_CONTRACT_NAME,
+        network: NETWORK
+      })
+
       console.log(`[Checkout] Checking sBTC balance for ${selectedWallet.name}`)
       const { hasEnoughFunds, balance } = await checkWalletBalance(selectedWallet.provider, selectedWallet.name)
 
@@ -220,21 +273,40 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       console.log(`[Checkout] Starting sBTC payment with ${selectedWallet.name}`)
       console.log(`[Checkout] Amount: ${amount} sBTC (${amountInMicroSbtc} micro-sBTC), Memo: ${memo}`)
 
+      // Show wallet prompt before making the call
+      setShowWalletPrompt(true)
+      
+      // Add a small delay to ensure wallet is ready
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
       let txId: string | null = null
 
-      switch (selectedWallet.name) {
-        case "Hiro":
-          txId = await handleHiroSbtcPayment(selectedWallet.provider, amountInMicroSbtc, memo)
-          break
-        case "Leather":
-          txId = await handleLeatherSbtcPayment(selectedWallet.provider, amountInMicroSbtc, memo)
-          break
-        case "Xverse":
-          txId = await handleXverseSbtcPayment(selectedWallet.provider, amountInMicroSbtc, memo)
-          break
-        default:
-          throw new Error(`Unsupported wallet: ${selectedWallet.name}`)
+      try {
+        switch (selectedWallet.name) {
+          case "Hiro":
+            txId = await handleHiroSbtcPayment(selectedWallet.provider, amountInMicroSbtc, memo)
+            break
+          case "Leather":
+            txId = await handleLeatherSbtcPayment(selectedWallet.provider, amountInMicroSbtc, memo)
+            break
+          case "Xverse":
+            txId = await handleXverseSbtcPayment(selectedWallet.provider, amountInMicroSbtc, memo)
+            break
+          default:
+            throw new Error(`Unsupported wallet: ${selectedWallet.name}`)
+        }
+      } catch (txError: unknown) {
+        const error = txError as Error & { code?: string | number }
+        console.error('[DEBUG] Transaction error details:', {
+          error: error,
+          message: error.message,
+          code: error.code,
+          stack: error.stack
+        })
+        throw error
       }
+
+      setShowWalletPrompt(false)
 
       if (txId) {
         console.log(`[Checkout] sBTC transaction submitted successfully: ${txId}`)
@@ -244,9 +316,17 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       } else {
         throw new Error("Transaction failed or was cancelled - no transaction ID received")
       }
-    } catch (error: any) {
-      console.error("[Checkout] sBTC Payment error:", error)
-      const errorMsg = getErrorMessage(error)
+    } catch (error: unknown) {
+      const err = error as Error & { code?: string | number; name?: string }
+      console.error('[DEBUG] Payment process failed:', {
+        error: err,
+        message: err.message,
+        code: err.code,
+        name: err.name
+      })
+      
+      setShowWalletPrompt(false)
+      const errorMsg = getErrorMessage(err)
       setErrorMessage(errorMsg)
       setStatus("failed")
       await updatePaymentStatus(paymentIntentId, "failed", "")
@@ -256,6 +336,8 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   }
 
   const handleHiroSbtcPayment = async (provider: any, amount: number, memo: string): Promise<string> => {
+    console.log("[Checkout] Starting Hiro sBTC payment process...")
+
     const connectResponse = await provider.request({
       method: "stx_requestAccounts",
     })
@@ -267,6 +349,9 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     const senderAddress = connectResponse.result[0]
     const recipientAddress = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || SBTC_CONTRACT_ADDRESS
 
+    console.log("[Checkout] Hiro wallet connected, making contract call...")
+    console.log("[Checkout] From:", senderAddress, "To:", recipientAddress, "Amount:", amount)
+
     const contractCallResponse = await provider.request({
       method: "stx_callContract",
       params: {
@@ -274,14 +359,21 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         contractName: SBTC_CONTRACT_NAME,
         functionName: "transfer",
         functionArgs: [
-          `u${amount}`,
-          `'${senderAddress}`,
-          `'${recipientAddress}`,
-          memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
+          amount,
+          senderAddress,
+          recipientAddress,
+          memo || null
         ],
-        network: NETWORK,
+        network: {
+          url: NETWORK_CONFIG.url,
+          network: NETWORK_CONFIG.network,
+          chainId: NETWORK_CONFIG.chainId
+        },
+        testnet: true
       },
     })
+
+    console.log("[Checkout] Hiro contract call response:", contractCallResponse)
 
     if (!contractCallResponse?.result?.txid) {
       throw new Error("sBTC transaction was cancelled or failed")
@@ -311,20 +403,25 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
       console.log("[Checkout] Calling sBTC contract transfer function...")
       console.log("[Checkout] Contract:", `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`)
-      console.log("[Checkout] Amount:", amount, "From:", senderAddress, "To:", recipientAddress)
+      console.log("[Checkout] From:", senderAddress, "To:", recipientAddress, "Amount:", amount)
 
       const contractCallResponse = await provider.request("stx_callContract", {
         contractAddress: SBTC_CONTRACT_ADDRESS,
         contractName: SBTC_CONTRACT_NAME,
         functionName: "transfer",
         functionArgs: [
-          `u${amount}`,
-          `'${senderAddress}`,
-          `'${recipientAddress}`,
-          memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
+          amount,
+          senderAddress,
+          recipientAddress,
+          memo || null
         ],
-        network: NETWORK,
+        network: {
+          url: NETWORK_CONFIG.url,
+          network: NETWORK_CONFIG.network
+        }
       })
+
+      console.log("[Checkout] Leather contract call response:", contractCallResponse)
 
       if (!contractCallResponse?.result?.txid) {
         throw new Error("sBTC transaction was cancelled or failed")
@@ -426,19 +523,22 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
       console.log("[Checkout] Xverse connected successfully, making sBTC contract call...")
       console.log("[Checkout] Contract:", `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`)
+      console.log("[Checkout] From:", senderAddress, "To:", recipientAddress, "Amount:", amount)
 
       const contractCallResponse = await satsConnect.request("stx_callContract", {
         contractAddress: SBTC_CONTRACT_ADDRESS,
         contractName: SBTC_CONTRACT_NAME,
         functionName: "transfer",
         functionArgs: [
-          `u${amount}`,
-          `'${senderAddress}`,
-          `'${recipientAddress}`,
-          memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
+          amount,
+          senderAddress,
+          recipientAddress,
+          memo || null
         ],
-        network: NETWORK,
+        network: NETWORK_CONFIG.network,
       })
+
+      console.log("[Checkout] Xverse contract call response:", contractCallResponse)
 
       if (contractCallResponse.status !== "success" || !contractCallResponse.result?.txid) {
         throw new Error("sBTC transaction was cancelled or failed")
@@ -473,19 +573,22 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
       console.log("[Checkout] Xverse accounts retrieved, making sBTC contract call...")
       console.log("[Checkout] Contract:", `${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`)
+      console.log("[Checkout] From:", senderAddress, "To:", recipientAddress, "Amount:", amount)
 
       const contractCallResponse = await provider.request("stx_callContract", {
         contractAddress: SBTC_CONTRACT_ADDRESS,
         contractName: SBTC_CONTRACT_NAME,
         functionName: "transfer",
         functionArgs: [
-          `u${amount}`,
-          `'${senderAddress}`,
-          `'${recipientAddress}`,
-          memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
+          amount,
+          senderAddress,
+          recipientAddress,
+          memo || null
         ],
-        network: NETWORK,
+        network: NETWORK_CONFIG.network,
       })
+
+      console.log("[Checkout] Xverse legacy contract call response:", contractCallResponse)
 
       if (!contractCallResponse?.result?.txid) {
         throw new Error("sBTC transaction was cancelled or failed")
@@ -504,6 +607,39 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       }
 
       throw error
+    }
+  }
+
+  // Test wallet connection function (for debugging)
+  const testWalletConnection = async () => {
+    if (!selectedWallet) {
+      console.error("[TEST] No wallet selected")
+      return
+    }
+
+    try {
+      console.log(`[TEST] Testing ${selectedWallet.name} wallet connection...`)
+      
+      let connectResponse
+      
+      if (selectedWallet.name === "Hiro") {
+        connectResponse = await selectedWallet.provider.request({
+          method: "stx_requestAccounts",
+        })
+        console.log('[TEST] Hiro connection response:', connectResponse)
+      } else if (selectedWallet.name === "Leather") {
+        connectResponse = await selectedWallet.provider.request("getAddresses", {})
+        console.log('[TEST] Leather connection response:', connectResponse)
+      }
+      
+      if (connectResponse) {
+        console.log('[TEST] Connection successful!')
+        alert('Wallet connection test successful! Check console for details.')
+      }
+      
+    } catch (error) {
+      console.error('[TEST] Test failed:', error)
+      alert(`Wallet connection test failed: ${(error as Error).message}`)
     }
   }
 
@@ -531,7 +667,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
   }
 
-  const getErrorMessage = (error: any): string => {
+  const getErrorMessage = (error: Error & { code?: string | number }): string => {
     if (
       error.message?.includes("User rejected") ||
       error.message?.includes("cancelled") ||
@@ -578,6 +714,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     setStatus("idle")
     setErrorMessage("")
     setIsProcessingPayment(false)
+    setShowWalletPrompt(false)
   }
 
   const refreshWallets = () => {
@@ -617,6 +754,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
   return (
     <div className="space-y-4">
+      {/* Debug info */}
       <Card className="p-4 bg-blue-50 border-blue-200">
         <div className="flex items-center justify-between">
           <div className="min-w-0 flex-1">
@@ -636,12 +774,17 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         </div>
       </Card>
 
+      {/* Status display */}
       <div className="text-center py-4">
         {getStatusIcon()}
         <p className="mt-2 text-sm text-gray-600">{getStatusMessage()}</p>
         <p className="text-xs text-orange-600 mt-1">sBTC Testnet • Amount: {amount} sBTC</p>
       </div>
 
+      {/* Wallet prompt */}
+      <WalletPrompt walletName={selectedWallet?.name || ""} isVisible={showWalletPrompt} />
+
+      {/* Wallet selection */}
       {availableWallets.length > 0 && (
         <Card className="p-4">
           <p className="text-sm font-medium text-gray-700 mb-2">Select Wallet:</p>
@@ -659,9 +802,22 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
               </Button>
             ))}
           </div>
+          
+          {/* Debug test button - remove in production */}
+          {process.env.NODE_ENV === 'development' && selectedWallet && (
+            <Button
+              onClick={testWalletConnection}
+              variant="outline"
+              size="sm"
+              className="mt-2 w-full bg-yellow-50 border-yellow-200 text-yellow-800"
+            >
+              Test Wallet Connection
+            </Button>
+          )}
         </Card>
       )}
 
+      {/* Payment buttons */}
       <div className="space-y-2">
         <Button
           onClick={handlePayWithWallet}
@@ -687,6 +843,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         )}
       </div>
 
+      {/* No wallets detected */}
       {availableWallets.length === 0 && (
         <Card className="p-4 bg-yellow-50 border-yellow-200">
           <div className="text-center space-y-2">
@@ -722,17 +879,18 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
             </div>
             <div className="text-xs text-yellow-600 mt-2">
               <p>
-                <strong>Note:</strong> Make sure wallets are unlocked and connected
+                <strong>Note:</strong> Make sure wallets are unlocked and connected to testnet
               </p>
             </div>
             <Button onClick={refreshWallets} variant="outline" size="sm" className="mt-2 bg-transparent">
               <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
+              Refresh Wallets
             </Button>
           </div>
         </Card>
       )}
 
+      {/* QR Code section */}
       <Card className="p-4 bg-gray-50">
         <p className="text-sm text-gray-600 text-center mb-2">Or scan with mobile wallet:</p>
         <div className="w-40 h-40 bg-white border-2 border-gray-200 mx-auto flex items-center justify-center rounded-lg overflow-hidden">
@@ -771,6 +929,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         </details>
       </Card>
 
+      {/* Faucet link */}
       <Card className="p-3 bg-blue-50 border-blue-200">
         <p className="text-xs text-blue-700 text-center">
           Need testnet sBTC?{" "}
@@ -786,6 +945,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         </p>
       </Card>
 
+      {/* Error display */}
       {errorMessage && status === "failed" && (
         <Card className="p-3 bg-red-50 border-red-200">
           <div className="flex items-center space-x-2 text-red-700">
@@ -793,6 +953,57 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
             <span className="text-sm font-medium">Payment Failed</span>
           </div>
           <p className="text-xs text-red-600 mt-1">{errorMessage}</p>
+          
+          {/* Additional debugging info in development */}
+          {process.env.NODE_ENV === 'development' && (
+            <details className="mt-2">
+              <summary className="text-xs text-red-500 cursor-pointer">Debug Info</summary>
+              <div className="text-xs text-red-500 mt-1 font-mono">
+                <p>Wallet: {selectedWallet?.name}</p>
+                <p>Contract: {SBTC_CONTRACT_ADDRESS}.{SBTC_CONTRACT_NAME}</p>
+                <p>Network: {NETWORK}</p>
+                <p>Amount: {amount} sBTC</p>
+                <p>Payment ID: {paymentIntentId}</p>
+              </div>
+            </details>
+          )}
+        </Card>
+      )}
+
+      {/* Development helper */}
+      {process.env.NODE_ENV === 'development' && (
+        <Card className="p-3 bg-green-50 border-green-200">
+          <details>
+            <summary className="text-xs text-green-700 cursor-pointer font-medium">
+              Development Debug Info
+            </summary>
+            <div className="text-xs text-green-600 mt-2 space-y-1">
+              <p><strong>Available Wallets:</strong> {availableWallets.map(w => w.name).join(', ') || 'None'}</p>
+              <p><strong>Selected Wallet:</strong> {selectedWallet?.name || 'None'}</p>
+              <p><strong>Status:</strong> {status}</p>
+              <p><strong>Processing:</strong> {isProcessingPayment ? 'Yes' : 'No'}</p>
+              <p><strong>Wallet Prompt:</strong> {showWalletPrompt ? 'Showing' : 'Hidden'}</p>
+              <p><strong>Contract:</strong> {SBTC_CONTRACT_ADDRESS}.{SBTC_CONTRACT_NAME}</p>
+              <p><strong>Network:</strong> {NETWORK}</p>
+              <p><strong>Amount:</strong> {amount} sBTC ({Math.floor(Number.parseFloat(amount) * 1_000_000)} micro-sBTC)</p>
+              <p><strong>Payment Intent:</strong> {paymentIntentId}</p>
+              <Button
+                onClick={() => console.log('Current state:', {
+                  availableWallets,
+                  selectedWallet,
+                  status,
+                  isProcessingPayment,
+                  showWalletPrompt,
+                  errorMessage
+                })}
+                variant="outline"
+                size="sm"
+                className="mt-2"
+              >
+                Log State to Console
+              </Button>
+            </div>
+          </details>
         </Card>
       )}
     </div>
