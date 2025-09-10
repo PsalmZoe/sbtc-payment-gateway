@@ -42,15 +42,28 @@ export function RecentPayments() {
   }, [])
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case "succeeded":
-        return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Succeeded</Badge>
+      case "success":
+      case "confirmed":
+        return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Confirmed</Badge>
       case "pending":
-        return <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">Pending</Badge>
+        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Pending</Badge>
       case "failed":
+      case "failure":
+      case "error":
         return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Failed</Badge>
+      case "cancelled":
+      case "canceled":
+        return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Cancelled</Badge>
+      case "insufficient_funds":
+        return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Insufficient Funds</Badge>
       default:
-        return <Badge variant="secondary">{status}</Badge>
+        return (
+          <Badge variant="secondary" className="capitalize">
+            {status}
+          </Badge>
+        )
     }
   }
 
@@ -63,8 +76,18 @@ export function RecentPayments() {
     })
   }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      // Could add toast notification here if available
+    } catch (error) {
+      console.error("Failed to copy:", error)
+    }
+  }
+
+  const openExplorerLink = (txHash: string) => {
+    const explorerUrl = `https://explorer.stacks.co/txid/${txHash}?chain=testnet`
+    window.open(explorerUrl, "_blank", "noopener,noreferrer")
   }
 
   if (loading) {
@@ -156,12 +179,12 @@ export function RecentPayments() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem>View Details</DropdownMenuItem>
                         {payment.txHash && (
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openExplorerLink(payment.txHash!)}>
                             <ExternalLink className="mr-2 h-4 w-4" />
                             View on Explorer
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => copyToClipboard(payment.id)}>
                           <Copy className="mr-2 h-4 w-4" />
                           Copy Payment ID
                         </DropdownMenuItem>

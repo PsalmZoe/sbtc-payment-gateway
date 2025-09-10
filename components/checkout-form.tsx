@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { CheckCircle, Clock, AlertCircle, Wallet, QrCode, Copy, Check, RefreshCw, ExternalLink } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 interface CheckoutFormProps {
   paymentIntentId: string
@@ -21,8 +22,6 @@ type WalletProvider = {
 
 const CONTRACT_ADDRESS = "ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS"
 const NETWORK = "testnet"
-const POLL_INTERVAL = 3000
-const MAX_POLL_ATTEMPTS = 30
 
 // QR Code generation function using QR Server API
 const generateQRCodeSVG = (data: string, size = 160): string => {
@@ -31,14 +30,13 @@ const generateQRCodeSVG = (data: string, size = 160): string => {
 }
 
 export default function CheckoutForm({ paymentIntentId, amount, contractId }: CheckoutFormProps) {
+  const router = useRouter()
   const [status, setStatus] = useState<PaymentStatus>("idle")
-  const [txHash, setTxHash] = useState<string>("")
   const [errorMessage, setErrorMessage] = useState<string>("")
   const [availableWallets, setAvailableWallets] = useState<WalletProvider[]>([])
   const [selectedWallet, setSelectedWallet] = useState<WalletProvider | null>(null)
   const [copied, setCopied] = useState(false)
   const [qrCodeData, setQrCodeData] = useState<string>("")
-  const [pollAttempts, setPollAttempts] = useState(0)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
 
   // Generate QR code data
@@ -73,7 +71,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
 
     if (typeof window !== "undefined") {
-      // Check for sats-connect (new Xverse integration)
+      // Check for sats-connect (new Xverse integration) - highest priority
       if ((window as any).satsConnect && typeof (window as any).satsConnect.request === "function") {
         wallets.push({
           name: "Xverse",
@@ -81,7 +79,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           detected: true,
         })
       }
-      // Check for legacy Xverse provider with proper validation
+      // Check for XverseProviders.StacksProvider - second priority
       else if (
         (window as any).XverseProviders?.StacksProvider &&
         typeof (window as any).XverseProviders.StacksProvider.request === "function"
@@ -92,7 +90,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           detected: true,
         })
       }
-      // Check if window.StacksProvider exists with proper validation
+      // Check if window.StacksProvider exists - third priority
       else if ((window as any).StacksProvider && typeof (window as any).StacksProvider.request === "function") {
         wallets.push({
           name: "Xverse",
@@ -113,7 +111,8 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   // Initial wallet detection with retry
   useEffect(() => {
     let attempts = 0
-    const maxAttempts = 5
+    const maxAttempts = 10
+    const retryDelay = 500
 
     const tryDetection = () => {
       attempts++
@@ -122,7 +121,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       detectWallets()
 
       if (availableWallets.length === 0 && attempts < maxAttempts) {
-        setTimeout(tryDetection, 1000)
+        setTimeout(tryDetection, retryDelay)
       }
     }
 
@@ -185,7 +184,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
   }
 
-  // Handle payment with selected wallet
   const handlePayWithWallet = async () => {
     if (!selectedWallet || isProcessingPayment) {
       if (!selectedWallet) setErrorMessage("Please select a wallet first")
@@ -195,7 +193,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     setIsProcessingPayment(true)
     setStatus("connecting")
     setErrorMessage("")
-    setPollAttempts(0)
 
     try {
       console.log(`[Checkout] Checking balance for ${selectedWallet.name}`)
@@ -207,6 +204,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
           `Insufficient funds. Balance: ${balanceInStx} STX. Required: ${amount} STX. Get testnet STX from the faucet.`,
         )
         setStatus("failed")
+        await updatePaymentStatus(paymentIntentId, "failed", "")
         return
       }
 
@@ -235,17 +233,19 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
       if (txId) {
         console.log(`[Checkout] Transaction submitted successfully: ${txId}`)
-        setTxHash(txId)
-        setStatus("pending")
         await updatePaymentStatus(paymentIntentId, "pending", txId)
-        pollForConfirmation(txId)
+
+        // Redirect to processing page like munapay
+        router.push(`/payment/processing/${paymentIntentId}?tx=${txId}`)
       } else {
         throw new Error("Transaction failed or was cancelled - no transaction ID received")
       }
     } catch (error: any) {
       console.error("[Checkout] Payment error:", error)
-      setErrorMessage(getErrorMessage(error))
+      const errorMsg = getErrorMessage(error)
+      setErrorMessage(errorMsg)
       setStatus("failed")
+      await updatePaymentStatus(paymentIntentId, "failed", "")
     } finally {
       setIsProcessingPayment(false)
     }
@@ -281,6 +281,16 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const handleLeatherPayment = async (provider: any, amount: number, memo: string): Promise<string> => {
     console.log("[Checkout] Starting Leather payment...")
 
+    try {
+      const connectResponse = await provider.request("getAddresses", {})
+      if (!connectResponse?.result?.addresses?.length) {
+        throw new Error("Please connect your Leather wallet first")
+      }
+    } catch (connectError) {
+      console.error("[Checkout] Leather connection error:", connectError)
+      throw new Error("Failed to connect to Leather wallet. Please ensure it's unlocked and try again.")
+    }
+
     const transferResponse = await provider.request("stx_transferTokens", {
       recipient: CONTRACT_ADDRESS,
       amount: amount.toString(),
@@ -306,37 +316,53 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         typeof (window as any).satsConnect.request === "function"
       ) {
         console.log("[Checkout] Using sats-connect API")
-        return await handleXverseWithSatsConnect((window as any).satsConnect, amount, memo)
+        try {
+          return await handleXverseWithSatsConnect((window as any).satsConnect, amount, memo)
+        } catch (satsConnectError) {
+          console.log("[Checkout] sats-connect failed, trying legacy methods:", satsConnectError)
+        }
       }
 
-      // Method 2: Try legacy StacksProvider
-      if (
-        typeof window !== "undefined" &&
-        (window as any).StacksProvider &&
-        typeof (window as any).StacksProvider.request === "function"
-      ) {
-        console.log("[Checkout] Using legacy StacksProvider")
-        return await handleXverseLegacy((window as any).StacksProvider, amount, memo)
-      }
-
-      // Method 3: Try XverseProviders.StacksProvider
+      // Method 2: Try XverseProviders.StacksProvider first (more reliable)
       if (
         typeof window !== "undefined" &&
         (window as any).XverseProviders?.StacksProvider &&
         typeof (window as any).XverseProviders.StacksProvider.request === "function"
       ) {
         console.log("[Checkout] Using XverseProviders.StacksProvider")
-        return await handleXverseLegacy((window as any).XverseProviders.StacksProvider, amount, memo)
+        try {
+          return await handleXverseLegacy((window as any).XverseProviders.StacksProvider, amount, memo)
+        } catch (xverseProviderError) {
+          console.log("[Checkout] XverseProviders failed, trying StacksProvider:", xverseProviderError)
+        }
+      }
+
+      // Method 3: Try legacy StacksProvider
+      if (
+        typeof window !== "undefined" &&
+        (window as any).StacksProvider &&
+        typeof (window as any).StacksProvider.request === "function"
+      ) {
+        console.log("[Checkout] Using legacy StacksProvider")
+        try {
+          return await handleXverseLegacy((window as any).StacksProvider, amount, memo)
+        } catch (stacksProviderError) {
+          console.log("[Checkout] StacksProvider failed:", stacksProviderError)
+        }
       }
 
       // Method 4: Try the provider passed in
       if (provider && typeof provider.request === "function") {
         console.log("[Checkout] Using provided Xverse provider")
-        return await handleXverseLegacy(provider, amount, memo)
+        try {
+          return await handleXverseLegacy(provider, amount, memo)
+        } catch (providerError) {
+          console.log("[Checkout] Provided provider failed:", providerError)
+        }
       }
 
       throw new Error(
-        "Xverse wallet not properly loaded. Please refresh the page and ensure Xverse extension is installed and unlocked.",
+        "Xverse wallet not properly loaded. Please refresh the page, ensure Xverse extension is installed and unlocked, then try again.",
       )
     } catch (error: any) {
       console.error("[Checkout] Xverse Payment Error:", error)
@@ -434,67 +460,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
   }
 
-  const pollForConfirmation = async (txId: string) => {
-    const checkStatus = async () => {
-      try {
-        setPollAttempts((prev) => prev + 1)
-        console.log(`[Checkout] Checking transaction status, attempt: ${pollAttempts + 1}`)
-
-        const response = await fetch(`https://stacks-node-api.testnet.stacks.co/extended/v1/tx/${txId}`, {
-          method: "GET",
-          headers: { Accept: "application/json" },
-        })
-
-        if (response.ok) {
-          const txData = await response.json()
-          console.log(`[Checkout] Transaction status: ${txData.tx_status}`)
-
-          switch (txData.tx_status) {
-            case "success":
-              console.log("[Checkout] Transaction confirmed as successful!")
-              setStatus("confirmed")
-              await updatePaymentStatus(paymentIntentId, "succeeded", txId)
-              return
-            case "abort_by_response":
-            case "abort_by_post_condition":
-              console.log("[Checkout] Transaction failed on network")
-              setStatus("failed")
-              setErrorMessage("Transaction was rejected by the network")
-              await updatePaymentStatus(paymentIntentId, "failed", txId)
-              return
-            case "pending":
-              console.log("[Checkout] Transaction still pending...")
-              break
-            default:
-              console.log(`[Checkout] Unknown transaction status: ${txData.tx_status}`)
-          }
-        } else {
-          console.log(`[Checkout] API response not OK: ${response.status}`)
-        }
-
-        if (pollAttempts < MAX_POLL_ATTEMPTS) {
-          setTimeout(checkStatus, POLL_INTERVAL)
-        } else {
-          console.log("[Checkout] Max polling attempts reached, assuming success")
-          setStatus("confirmed")
-          await updatePaymentStatus(paymentIntentId, "succeeded", txId)
-        }
-      } catch (error) {
-        console.error("[Checkout] Status check error:", error)
-
-        if (pollAttempts < MAX_POLL_ATTEMPTS) {
-          setTimeout(checkStatus, POLL_INTERVAL * 2)
-        } else {
-          console.log("[Checkout] Max attempts reached after errors, assuming success")
-          setStatus("confirmed")
-          await updatePaymentStatus(paymentIntentId, "succeeded", txId)
-        }
-      }
-    }
-
-    setTimeout(checkStatus, POLL_INTERVAL)
-  }
-
   const updatePaymentStatus = async (intentId: string, status: string, txHash: string) => {
     try {
       console.log("[Checkout] Updating payment status:", { intentId, status, txHash })
@@ -565,8 +530,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
   const retryPayment = () => {
     setStatus("idle")
     setErrorMessage("")
-    setTxHash("")
-    setPollAttempts(0)
     setIsProcessingPayment(false)
   }
 
@@ -595,7 +558,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       case "connecting":
         return "Connecting to wallet..."
       case "pending":
-        return `Confirming transaction... (${pollAttempts}/${MAX_POLL_ATTEMPTS})`
+        return "Processing payment..."
       case "confirmed":
         return "Payment successful!"
       case "failed":
@@ -603,32 +566,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       default:
         return availableWallets.length > 0 ? "Ready to pay" : "No wallets detected"
     }
-  }
-
-  if (status === "confirmed") {
-    return (
-      <Card className="p-6 text-center">
-        <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-        <h2 className="text-xl font-semibold text-green-700 mb-2">Payment Successful!</h2>
-        <p className="text-gray-600 mb-4">Your payment has been confirmed on the Stacks testnet.</p>
-        {txHash && (
-          <div className="space-y-2">
-            <p className="text-sm text-gray-500">
-              Transaction: <code className="bg-gray-100 px-2 py-1 rounded text-xs">{txHash.slice(0, 16)}...</code>
-            </p>
-            <a
-              href={`https://explorer.stacks.co/txid/${txHash}?chain=testnet`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center text-blue-500 hover:text-blue-700 text-sm underline"
-            >
-              View on Stacks Explorer
-              <ExternalLink className="w-3 h-3 ml-1" />
-            </a>
-          </div>
-        )}
-      </Card>
-    )
   }
 
   return (
@@ -807,11 +744,6 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
             <span className="text-sm font-medium">Payment Failed</span>
           </div>
           <p className="text-xs text-red-600 mt-1">{errorMessage}</p>
-          {txHash && (
-            <p className="text-xs text-red-500 mt-1">
-              Check transaction: {txHash.slice(0, 16)}...{txHash.slice(-8)}
-            </p>
-          )}
         </Card>
       )}
     </div>
