@@ -20,7 +20,8 @@ type WalletProvider = {
   detected: boolean
 }
 
-const CONTRACT_ADDRESS = "ST33MYKWMAW0E2DAZETJ1Z8RTRZ93D2GB890QWQXS"
+const SBTC_CONTRACT_ADDRESS = "ST1F7QA2MDF17S807EPA36TSS8AMEFYKKA9TVGWXT"
+const SBTC_CONTRACT_NAME = "sbtc-token"
 const NETWORK = "testnet"
 
 // QR Code generation function using QR Server API
@@ -41,8 +42,8 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
 
   // Generate QR code data
   useEffect(() => {
-    const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1000000)
-    const qrData = `stacks:transfer?recipient=${CONTRACT_ADDRESS}&amount=${amountInMicroStx}&memo=${paymentIntentId}`
+    const amountInMicroSbtc = Math.floor(Number.parseFloat(amount) * 1000000)
+    const qrData = `stacks:${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}/transfer?amount=${amountInMicroSbtc}&memo=${paymentIntentId}`
     setQrCodeData(qrData)
   }, [amount, paymentIntentId])
 
@@ -134,7 +135,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     walletName: string,
   ): Promise<{ hasEnoughFunds: boolean; balance: number }> => {
     try {
-      const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1_000_000)
+      const amountInMicroSbtc = Math.floor(Number.parseFloat(amount) * 1_000_000)
 
       let address = ""
 
@@ -165,21 +166,36 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         throw new Error("Could not retrieve wallet address")
       }
 
-      // Check balance via Stacks API
-      const response = await fetch(`https://stacks-node-api.testnet.stacks.co/extended/v1/address/${address}/balances`)
-      const balanceData = await response.json()
+      try {
+        const response = await fetch(
+          `https://stacks-node-api.testnet.stacks.co/v2/contracts/call-read/${SBTC_CONTRACT_ADDRESS}/${SBTC_CONTRACT_NAME}/get-balance`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              sender: address,
+              arguments: [`0x${Buffer.from(address.slice(2), "hex").toString("hex")}`],
+            }),
+          },
+        )
 
-      const currentBalance = Number.parseInt(balanceData.stx.balance) || 0
-      const hasEnoughFunds = currentBalance >= amountInMicroStx
+        const balanceData = await response.json()
+        const currentBalance = balanceData.result ? Number.parseInt(balanceData.result.replace("u", "")) : 0
+        const hasEnoughFunds = currentBalance >= amountInMicroSbtc
 
-      console.log(
-        `[Balance Check] Address: ${address}, Balance: ${currentBalance}, Required: ${amountInMicroStx}, Sufficient: ${hasEnoughFunds}`,
-      )
+        console.log(
+          `[Balance Check] Address: ${address}, sBTC Balance: ${currentBalance}, Required: ${amountInMicroSbtc}, Sufficient: ${hasEnoughFunds}`,
+        )
 
-      return { hasEnoughFunds, balance: currentBalance }
+        return { hasEnoughFunds, balance: currentBalance }
+      } catch (balanceError) {
+        console.log("[Balance Check] sBTC balance check failed, assuming sufficient funds:", balanceError)
+        return { hasEnoughFunds: true, balance: 0 }
+      }
     } catch (error) {
       console.error("[Balance Check Error]:", error)
-      // If balance check fails, assume sufficient funds to not block payment
       return { hasEnoughFunds: true, balance: 0 }
     }
   }
@@ -195,53 +211,49 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     setErrorMessage("")
 
     try {
-      console.log(`[Checkout] Checking balance for ${selectedWallet.name}`)
+      console.log(`[Checkout] Checking sBTC balance for ${selectedWallet.name}`)
       const { hasEnoughFunds, balance } = await checkWalletBalance(selectedWallet.provider, selectedWallet.name)
 
       if (!hasEnoughFunds) {
-        const balanceInStx = (balance / 1_000_000).toFixed(6)
-        setErrorMessage(
-          `Insufficient funds. Balance: ${balanceInStx} STX. Required: ${amount} STX. Get testnet STX from the faucet.`,
-        )
+        const balanceInSbtc = (balance / 1_000_000).toFixed(6)
+        setErrorMessage(`Insufficient sBTC funds. Balance: ${balanceInSbtc} sBTC. Required: ${amount} sBTC.`)
         setStatus("failed")
         await updatePaymentStatus(paymentIntentId, "failed", "")
         return
       }
 
-      // Convert sBTC (STX format) to microSTX
-      const amountInMicroStx = Math.floor(Number.parseFloat(amount) * 1_000_000)
+      const amountInMicroSbtc = Math.floor(Number.parseFloat(amount) * 1_000_000)
       const memo = `Payment: ${paymentIntentId}`
 
-      console.log(`[Checkout] Starting payment with ${selectedWallet.name}`)
-      console.log(`[Checkout] Amount: ${amount} sBTC (${amountInMicroStx} microSTX), Memo: ${memo}`)
+      console.log(`[Checkout] Starting sBTC payment with ${selectedWallet.name}`)
+      console.log(`[Checkout] Amount: ${amount} sBTC (${amountInMicroSbtc} micro-sBTC), Memo: ${memo}`)
 
       let txId: string | null = null
 
       switch (selectedWallet.name) {
         case "Hiro":
-          txId = await handleHiroPayment(selectedWallet.provider, amountInMicroStx, memo)
+          txId = await handleHiroSbtcPayment(selectedWallet.provider, amountInMicroSbtc, memo)
           break
         case "Leather":
-          txId = await handleLeatherPayment(selectedWallet.provider, amountInMicroStx, memo)
+          txId = await handleLeatherSbtcPayment(selectedWallet.provider, amountInMicroSbtc, memo)
           break
         case "Xverse":
-          txId = await handleXversePayment(selectedWallet.provider, amountInMicroStx, memo)
+          txId = await handleXverseSbtcPayment(selectedWallet.provider, amountInMicroSbtc, memo)
           break
         default:
           throw new Error(`Unsupported wallet: ${selectedWallet.name}`)
       }
 
       if (txId) {
-        console.log(`[Checkout] Transaction submitted successfully: ${txId}`)
+        console.log(`[Checkout] sBTC transaction submitted successfully: ${txId}`)
         await updatePaymentStatus(paymentIntentId, "pending", txId)
 
-        // Redirect to processing page like munapay
         router.push(`/payment/processing/${paymentIntentId}?tx=${txId}`)
       } else {
         throw new Error("Transaction failed or was cancelled - no transaction ID received")
       }
     } catch (error: any) {
-      console.error("[Checkout] Payment error:", error)
+      console.error("[Checkout] sBTC Payment error:", error)
       const errorMsg = getErrorMessage(error)
       setErrorMessage(errorMsg)
       setStatus("failed")
@@ -251,8 +263,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
   }
 
-  // Hiro wallet payment
-  const handleHiroPayment = async (provider: any, amount: number, memo: string): Promise<string> => {
+  const handleHiroSbtcPayment = async (provider: any, amount: number, memo: string): Promise<string> => {
     const connectResponse = await provider.request({
       method: "stx_requestAccounts",
     })
@@ -261,103 +272,121 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       throw new Error("Please connect your Hiro wallet first")
     }
 
-    const transferResponse = await provider.request({
-      method: "stx_transferTokens",
+    const senderAddress = connectResponse.result[0]
+    const recipientAddress = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || SBTC_CONTRACT_ADDRESS
+
+    const contractCallResponse = await provider.request({
+      method: "stx_callContract",
       params: {
-        recipient: CONTRACT_ADDRESS,
-        amount: amount.toString(),
-        memo,
+        contractAddress: SBTC_CONTRACT_ADDRESS,
+        contractName: SBTC_CONTRACT_NAME,
+        functionName: "transfer",
+        functionArgs: [
+          `u${amount}`,
+          `'${senderAddress}`,
+          `'${recipientAddress}`,
+          memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
+        ],
         network: NETWORK,
       },
     })
 
-    if (!transferResponse?.result?.txid) {
-      throw new Error("Transaction was cancelled or failed")
+    if (!contractCallResponse?.result?.txid) {
+      throw new Error("sBTC transaction was cancelled or failed")
     }
 
-    return transferResponse.result.txid
+    return contractCallResponse.result.txid
   }
 
-  const handleLeatherPayment = async (provider: any, amount: number, memo: string): Promise<string> => {
-    console.log("[Checkout] Starting Leather payment...")
+  const handleLeatherSbtcPayment = async (provider: any, amount: number, memo: string): Promise<string> => {
+    console.log("[Checkout] Starting Leather sBTC payment...")
 
     try {
       const connectResponse = await provider.request("getAddresses", {})
       if (!connectResponse?.result?.addresses?.length) {
         throw new Error("Please connect your Leather wallet first")
       }
+
+      const senderAddress = connectResponse.result.addresses[0].address
+      const recipientAddress = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || SBTC_CONTRACT_ADDRESS
+
+      console.log("[Checkout] Calling sBTC contract transfer function...")
+
+      const contractCallResponse = await provider.request("stx_callContract", {
+        contractAddress: SBTC_CONTRACT_ADDRESS,
+        contractName: SBTC_CONTRACT_NAME,
+        functionName: "transfer",
+        functionArgs: [
+          `u${amount}`,
+          `'${senderAddress}`,
+          `'${recipientAddress}`,
+          memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
+        ],
+        network: NETWORK,
+      })
+
+      if (!contractCallResponse?.result?.txid) {
+        throw new Error("sBTC transaction was cancelled or failed")
+      }
+
+      return contractCallResponse.result.txid
     } catch (connectError) {
-      console.error("[Checkout] Leather connection error:", connectError)
-      throw new Error("Failed to connect to Leather wallet. Please ensure it's unlocked and try again.")
+      console.error("[Checkout] Leather sBTC connection error:", connectError)
+      throw new Error(
+        "Failed to connect to Leather wallet or call sBTC contract. Please ensure it's unlocked and try again.",
+      )
     }
-
-    const transferResponse = await provider.request("stx_transferTokens", {
-      recipient: CONTRACT_ADDRESS,
-      amount: amount.toString(),
-      memo,
-      network: NETWORK,
-    })
-
-    if (!transferResponse?.result?.txid) {
-      throw new Error("Transaction was cancelled or failed")
-    }
-
-    return transferResponse.result.txid
   }
 
-  const handleXversePayment = async (provider: any, amount: number, memo: string): Promise<string> => {
+  const handleXverseSbtcPayment = async (provider: any, amount: number, memo: string): Promise<string> => {
     try {
-      console.log("[Checkout] Starting Xverse payment process...")
+      console.log("[Checkout] Starting Xverse sBTC payment process...")
 
-      // Method 1: Try sats-connect (modern Xverse API)
       if (
         typeof window !== "undefined" &&
         (window as any).satsConnect &&
         typeof (window as any).satsConnect.request === "function"
       ) {
-        console.log("[Checkout] Using sats-connect API")
+        console.log("[Checkout] Using sats-connect API for sBTC")
         try {
-          return await handleXverseWithSatsConnect((window as any).satsConnect, amount, memo)
+          return await handleXverseSbtcWithSatsConnect((window as any).satsConnect, amount, memo)
         } catch (satsConnectError) {
-          console.log("[Checkout] sats-connect failed, trying legacy methods:", satsConnectError)
+          console.log("[Checkout] sats-connect sBTC failed, trying legacy methods:", satsConnectError)
         }
       }
 
-      // Method 2: Try XverseProviders.StacksProvider first (more reliable)
       if (
         typeof window !== "undefined" &&
         (window as any).XverseProviders?.StacksProvider &&
         typeof (window as any).XverseProviders.StacksProvider.request === "function"
       ) {
-        console.log("[Checkout] Using XverseProviders.StacksProvider")
+        console.log("[Checkout] Using XverseProviders.StacksProvider for sBTC")
         try {
-          return await handleXverseLegacy((window as any).XverseProviders.StacksProvider, amount, memo)
+          return await handleXverseSbtcLegacy((window as any).XverseProviders.StacksProvider, amount, memo)
         } catch (xverseProviderError) {
-          console.log("[Checkout] XverseProviders failed, trying StacksProvider:", xverseProviderError)
+          console.log("[Checkout] XverseProviders sBTC failed, trying StacksProvider:", xverseProviderError)
         }
       }
 
-      // Method 3: Try legacy StacksProvider
       if (
         typeof window !== "undefined" &&
         (window as any).StacksProvider &&
         typeof (window as any).StacksProvider.request === "function"
       ) {
-        console.log("[Checkout] Using legacy StacksProvider")
+        console.log("[Checkout] Using legacy StacksProvider for sBTC")
         try {
-          return await handleXverseLegacy((window as any).StacksProvider, amount, memo)
+          return await handleXverseSbtcLegacy((window as any).StacksProvider, amount, memo)
         } catch (stacksProviderError) {
-          console.log("[Checkout] StacksProvider failed:", stacksProviderError)
+          console.log("[Checkout] StacksProvider sBTC failed:", stacksProviderError)
         }
       }
 
-      // Method 4: Try the provider passed in
       if (provider && typeof provider.request === "function") {
-        console.log("[Checkout] Using provided Xverse provider")
+        console.log("[Checkout] Using provided Xverse provider for sBTC")
         try {
-          return await handleXverseLegacy(provider, amount, memo)
+          return await handleXverseSbtcLegacy(provider, amount, memo)
         } catch (providerError) {
-          console.log("[Checkout] Provided provider failed:", providerError)
+          console.log("[Checkout] Provided provider sBTC failed:", providerError)
         }
       }
 
@@ -365,7 +394,7 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         "Xverse wallet not properly loaded. Please refresh the page, ensure Xverse extension is installed and unlocked, then try again.",
       )
     } catch (error: any) {
-      console.error("[Checkout] Xverse Payment Error:", error)
+      console.error("[Checkout] Xverse sBTC Payment Error:", error)
 
       if (error.message?.includes("request") && error.message?.includes("not implemented")) {
         throw new Error(
@@ -377,13 +406,13 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
     }
   }
 
-  const handleXverseWithSatsConnect = async (satsConnect: any, amount: number, memo: string): Promise<string> => {
+  const handleXverseSbtcWithSatsConnect = async (satsConnect: any, amount: number, memo: string): Promise<string> => {
     try {
-      console.log("[Checkout] Connecting via sats-connect...")
+      console.log("[Checkout] Connecting via sats-connect for sBTC...")
 
       const connectResponse = await satsConnect.request("wallet_connect", {
         purposes: ["stacks"],
-        message: "Connect to complete your STX payment",
+        message: "Connect to complete your sBTC payment",
       })
 
       if (connectResponse.status !== "success" || !connectResponse.result?.addresses?.length) {
@@ -395,31 +424,40 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         throw new Error("No Stacks address found in Xverse wallet")
       }
 
-      console.log("[Checkout] Xverse connected successfully, making transfer...")
+      const senderAddress = stacksAddress.address
+      const recipientAddress = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || SBTC_CONTRACT_ADDRESS
 
-      const transferResponse = await satsConnect.request("stx_transferTokens", {
-        recipient: CONTRACT_ADDRESS,
-        amount: amount.toString(),
-        memo: memo,
+      console.log("[Checkout] Xverse connected successfully, making sBTC contract call...")
+
+      const contractCallResponse = await satsConnect.request("stx_callContract", {
+        contractAddress: SBTC_CONTRACT_ADDRESS,
+        contractName: SBTC_CONTRACT_NAME,
+        functionName: "transfer",
+        functionArgs: [
+          `u${amount}`,
+          `'${senderAddress}`,
+          `'${recipientAddress}`,
+          memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
+        ],
         network: NETWORK,
       })
 
-      if (transferResponse.status !== "success" || !transferResponse.result?.txid) {
-        throw new Error("Transaction was cancelled or failed")
+      if (contractCallResponse.status !== "success" || !contractCallResponse.result?.txid) {
+        throw new Error("sBTC transaction was cancelled or failed")
       }
 
-      return transferResponse.result.txid
+      return contractCallResponse.result.txid
     } catch (error: any) {
       if (error.message?.includes("User rejected") || error.message?.includes("cancelled")) {
-        throw new Error("Payment was cancelled by user")
+        throw new Error("sBTC payment was cancelled by user")
       }
       throw error
     }
   }
 
-  const handleXverseLegacy = async (provider: any, amount: number, memo: string): Promise<string> => {
+  const handleXverseSbtcLegacy = async (provider: any, amount: number, memo: string): Promise<string> => {
     try {
-      console.log("[Checkout] Using legacy Xverse provider...")
+      console.log("[Checkout] Using legacy Xverse provider for sBTC...")
 
       if (!provider || typeof provider.request !== "function") {
         throw new Error("Invalid Xverse provider - missing request method")
@@ -431,23 +469,32 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
         throw new Error("Please connect your Xverse wallet first")
       }
 
-      console.log("[Checkout] Xverse accounts retrieved, making transfer...")
+      const senderAddress = accounts.result.addresses[0].address
+      const recipientAddress = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || SBTC_CONTRACT_ADDRESS
 
-      const transferResponse = await provider.request("stx_transferTokens", {
-        recipient: CONTRACT_ADDRESS,
-        amount: amount.toString(),
-        memo,
+      console.log("[Checkout] Xverse accounts retrieved, making sBTC contract call...")
+
+      const contractCallResponse = await provider.request("stx_callContract", {
+        contractAddress: SBTC_CONTRACT_ADDRESS,
+        contractName: SBTC_CONTRACT_NAME,
+        functionName: "transfer",
+        functionArgs: [
+          `u${amount}`,
+          `'${senderAddress}`,
+          `'${recipientAddress}`,
+          memo ? `(some 0x${Buffer.from(memo).toString("hex")})` : "none",
+        ],
         network: NETWORK,
       })
 
-      if (!transferResponse?.result?.txid) {
-        throw new Error("Transaction was cancelled or failed")
+      if (!contractCallResponse?.result?.txid) {
+        throw new Error("sBTC transaction was cancelled or failed")
       }
 
-      return transferResponse.result.txid
+      return contractCallResponse.result.txid
     } catch (error: any) {
       if (error.message?.includes("User rejected") || error.message?.includes("cancelled")) {
-        throw new Error("Payment was cancelled by user")
+        throw new Error("sBTC payment was cancelled by user")
       }
 
       if (error.message?.includes("request") && error.message?.includes("not implemented")) {
@@ -573,13 +620,15 @@ export default function CheckoutForm({ paymentIntentId, amount, contractId }: Ch
       <Card className="p-4 bg-blue-50 border-blue-200">
         <div className="flex items-center justify-between">
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-blue-600 font-medium mb-1">Contract Address:</p>
-            <code className="text-xs text-blue-800 font-mono break-all">{CONTRACT_ADDRESS}</code>
+            <p className="text-xs text-blue-600 font-medium mb-1">sBTC Contract:</p>
+            <code className="text-xs text-blue-800 font-mono break-all">
+              {SBTC_CONTRACT_ADDRESS}.{SBTC_CONTRACT_NAME}
+            </code>
           </div>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => copyToClipboard(CONTRACT_ADDRESS)}
+            onClick={() => copyToClipboard(`${SBTC_CONTRACT_ADDRESS}.${SBTC_CONTRACT_NAME}`)}
             className="ml-2 flex-shrink-0"
           >
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
